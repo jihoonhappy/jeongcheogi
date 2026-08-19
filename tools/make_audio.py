@@ -370,6 +370,45 @@ def mac_say(text, out, voice):
 # 4. 만들기
 # ─────────────────────────────────────────────────────────────
 
+def pack_zip(subs):
+    """과목별로 zip 을 만듭니다. 폰·클라우드·다른 PC 로 옮길 때 씁니다."""
+    import zipfile
+    made = []
+    for s in subs:
+        d = os.path.join(OUT_ROOT, "%d과목_%s" % (s, SUBJ[s].replace(" ", "")))
+        if not os.path.isdir(d):
+            continue
+        files = sorted(f for f in os.listdir(d) if f.endswith(".mp3"))
+        if not files:
+            continue
+        z = os.path.join(OUT_ROOT, "%d과목_%s.zip" % (s, SUBJ[s].replace(" ", "")))
+        with zipfile.ZipFile(z, "w", zipfile.ZIP_STORED) as zf:   # mp3 는 이미 압축본
+            for f in files:
+                zf.write(os.path.join(d, f), arcname=f)
+        made.append(z)
+        print("  %s  (%d개 · %.0f MB)" % (os.path.basename(z), len(files),
+                                          os.path.getsize(z) / 1024 / 1024))
+    return made
+
+def copy_out(dest, subs):
+    """만든 오디오를 다른 폴더로 복사합니다. iCloud Drive, 외장 디스크 등."""
+    dest = os.path.expanduser(dest)
+    os.makedirs(dest, exist_ok=True)
+    n = 0
+    for s in subs:
+        name = "%d과목_%s" % (s, SUBJ[s].replace(" ", ""))
+        src = os.path.join(OUT_ROOT, name)
+        if not os.path.isdir(src):
+            continue
+        dst = os.path.join(dest, name)
+        os.makedirs(dst, exist_ok=True)
+        for f in sorted(os.listdir(src)):
+            if f.endswith(".mp3"):
+                shutil.copy2(os.path.join(src, f), os.path.join(dst, f))
+                n += 1
+    print("  %s 로 %d개 파일을 복사했습니다." % (dest, n))
+    return n
+
 def group_name(s, gi, lo, hi):
     return "%d과목_%02d_%03d-%03d.mp3" % (s, gi, lo, hi)
 
@@ -629,6 +668,10 @@ def main():
     ap.add_argument("--force", action="store_true", help="이미 만든 파일도 다시 만들기")
     ap.add_argument("--clean-samples", action="store_true",
                     help="맛보기 파일만 지웁니다 (과목 폴더는 건드리지 않습니다)")
+    ap.add_argument("--zip", action="store_true",
+                    help="만든 뒤 과목별 zip 으로 묶습니다 (폰·클라우드로 옮길 때)")
+    ap.add_argument("--copy-to", default=None,
+                    help="만든 뒤 이 폴더로 복사합니다 (예: ~/Library/Mobile Documents/com~apple~CloudDocs/정처기음성)")
     ap.add_argument("--keep-tmp", action="store_true", help="중간 파일 남기기")
     args = ap.parse_args()
 
@@ -696,7 +739,19 @@ def main():
     print()
     for s in subs:
         asyncio.run(build_subject(s, args))
-    print("\n끝났습니다. audio/ 폴더를 음악 앱이나 휴대폰으로 옮겨 들으시면 됩니다.")
+
+    if args.zip:
+        print("\nzip 으로 묶는 중…")
+        pack_zip(subs)
+    if args.copy_to:
+        print("\n복사하는 중…")
+        copy_out(args.copy_to, subs)
+
+    print("\n끝났습니다.")
+    print("  만든 위치: %s" % OUT_ROOT)
+    print("  이 폴더는 git 에 올라가지 않으므로, 다른 기기에서도 들으시려면 옮겨 두세요:")
+    print("    --zip           과목별 zip 으로 묶기")
+    print("    --copy-to 경로   iCloud Drive 등 다른 폴더로 복사")
 
 if __name__ == "__main__":
     main()
