@@ -1,0 +1,16 @@
+{
+  "name": "정보처리기사 필기 트레이너",
+  "short_name": "정처기 필기",
+  "description": "간격 반복 학습으로 정보처리기사 필기를 준비하는 오프라인 문제 풀이 앱",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EDF0F4",
+  "theme_color": "#16233A",
+  "lang": "ko",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

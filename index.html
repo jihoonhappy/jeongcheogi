@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16233A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="정처기 필기">
+<title>정보처리기사 필기 트레이너</title>
+<style>
+:root{
+  --paper:#EDF0F4; --grid:#DDE3EA; --card:#FFFFFF;
+  --ink:#16233A; --ink2:#4A5B75; --ink3:#8494AB;
+  --line:#D5DDE6;
+  --blue:#2F5DE0; --blue-soft:#E7EDFD;
+  --teal:#0E8074; --teal-soft:#E0F2EF;
+  --mag:#C2185B;  --mag-soft:#FBE7EF;
+  --amber:#B26A00; --amber-soft:#FDF0DC;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Malgun Gothic",sans-serif;
+  color:var(--ink); background:var(--paper);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:28px 28px;
+  line-height:1.6; -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:860px;margin:0 auto;padding:20px 16px 72px}
+button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.hide{display:none!important}
+
+/* ── 헤더 ── */
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.brand{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink3);font-family:var(--mono)}
+h1{margin:2px 0 0;font-size:26px;letter-spacing:-.02em;font-weight:800}
+h1 em{font-style:normal;color:var(--blue)}
+.streak{font-family:var(--mono);font-size:12px;color:var(--ink2);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;white-space:nowrap}
+
+/* ── 카드 ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.card h2{margin:0 0 12px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3);font-family:var(--mono);font-weight:700}
+
+/* ── 계기판 ── */
+.gauges{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.g{text-align:center}
+.g .ring{position:relative;width:100%;aspect-ratio:1;max-width:76px;margin:0 auto}
+.g svg{transform:rotate(-90deg);width:100%;height:100%}
+.g .val{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;font-weight:700}
+.g .lbl{margin-top:6px;font-size:10px;color:var(--ink2);line-height:1.3}
+.g .lbl b{display:block;font-family:var(--mono);font-size:11px;color:var(--ink3);font-weight:700}
+
+/* ── 히트맵 ── */
+.heat{display:flex;gap:3px;overflow-x:auto;padding-bottom:4px}
+.hcol{display:flex;flex-direction:column;gap:3px}
+.hc{width:11px;height:11px;border-radius:2px;background:#E3E8EE}
+.hc.l1{background:#C3D3F6}.hc.l2{background:#8FAEF0}.hc.l3{background:#5C86E8}.hc.l4{background:#2F5DE0}
+.heat-legend{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--ink3);font-family:var(--mono)}
+
+/* ── 버튼 ── */
+.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:10px}
+.mode{text-align:left;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:14px;transition:.12s}
+.mode:hover{border-color:var(--blue);transform:translateY(-1px)}
+.mode:disabled{opacity:.4;cursor:default;transform:none;border-color:var(--line)}
+.mode .mt{font-weight:700;font-size:15px;display:flex;align-items:center;gap:7px}
+.mode .md{font-size:12px;color:var(--ink2);margin-top:3px}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.d-blue{background:var(--blue)}.d-teal{background:var(--teal)}.d-mag{background:var(--mag)}.d-amber{background:var(--amber)}
+
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 13px;font-size:13px;color:var(--ink2)}
+.chip.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:600}
+.chip small{font-family:var(--mono);opacity:.6;margin-left:5px}
+
+.btn{border-radius:9px;padding:11px 20px;font-weight:700;font-size:14px;border:1px solid transparent}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-ghost{border-color:var(--line);background:var(--card);color:var(--ink2)}
+.btn-mag{border-color:var(--mag);background:var(--mag-soft);color:var(--mag)}
+.btn:disabled{opacity:.35;cursor:default}
+.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.spread{justify-content:space-between}
+
+/* ── 문제 ── */
+.progress{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin:10px 0 16px}
+.progress i{display:block;height:100%;background:var(--blue);transition:width .25s}
+.meta{display:flex;gap:6px;flex-wrap:wrap;font-family:var(--mono);font-size:10px;letter-spacing:.05em}
+.tag{padding:3px 8px;border-radius:5px;background:var(--blue-soft);color:var(--blue);font-weight:700}
+.tag.t2{background:var(--amber-soft);color:var(--amber)}
+.tag.t3{background:var(--mag-soft);color:var(--mag)}
+.tag.t4{background:var(--teal-soft);color:var(--teal)}
+.qtext{font-size:17px;font-weight:700;line-height:1.65;margin:14px 0 4px;white-space:pre-wrap}
+.qtext code,pre.code{font-family:var(--mono)}
+.opts{display:grid;gap:8px;margin-top:14px}
+.opt{display:flex;gap:11px;align-items:flex-start;text-align:left;border:1px solid var(--line);background:#FCFDFE;border-radius:9px;padding:12px 13px;font-size:14.5px;line-height:1.55;transition:.1s;width:100%}
+.opt:hover{border-color:var(--blue)}
+.opt .n{font-family:var(--mono);font-weight:700;color:var(--ink3);flex:none}
+.opt.sel{border-color:var(--blue);background:var(--blue-soft)}
+.opt.ok{border-color:var(--teal);background:var(--teal-soft)}
+.opt.ok .n{color:var(--teal)}
+.opt.no{border-color:var(--mag);background:var(--mag-soft)}
+.opt.no .n{color:var(--mag)}
+.opt.dis{cursor:default}
+.expl{margin-top:14px;border-left:3px solid var(--teal);background:var(--teal-soft);border-radius:0 9px 9px 0;padding:12px 14px;font-size:14px}
+.expl.bad{border-left-color:var(--mag);background:var(--mag-soft)}
+.expl .vd{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--teal)}
+.expl.bad .vd{color:var(--mag)}
+.expl p{margin:6px 0 0;color:var(--ink)}
+.expl .srs{margin-top:8px;font-size:11.5px;color:var(--ink2);font-family:var(--mono)}
+
+/* ── 결과/통계 ── */
+.score{display:flex;align-items:flex-end;gap:12px}
+.score b{font-size:56px;line-height:.95;font-family:var(--mono);letter-spacing:-.03em}
+.score span{padding-bottom:8px;font-size:13px;color:var(--ink2)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;border-radius:3px}
+.sline{display:flex;justify-content:space-between;font-size:13.5px;margin-top:12px}
+.sline .f{font-family:var(--mono);font-weight:700}
+.rev{border:1px solid var(--line);border-radius:10px;padding:13px;margin-top:10px}
+.rev .rq{font-weight:700;font-size:14.5px;margin:7px 0;white-space:pre-wrap}
+.rev .ra{font-size:13.5px;color:var(--teal);font-weight:600}
+.rev .rw{font-size:13.5px;color:var(--mag)}
+.rev .re{font-size:13px;color:var(--ink2);margin-top:7px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:9px 6px;border-bottom:1px solid var(--line)}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+td.num{font-family:var(--mono);text-align:right;white-space:nowrap}
+.empty{color:var(--ink3);font-size:13.5px;padding:8px 0}
+.timer{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--ink2)}
+.timer.warn{color:var(--mag)}
+textarea{width:100%;min-height:88px;font-family:var(--mono);font-size:11.5px;border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical;background:#FCFDFE;color:var(--ink)}
+.note{font-size:12px;color:var(--ink3);margin-top:8px;line-height:1.6}
+.sticky{position:sticky;bottom:0;background:linear-gradient(transparent,var(--paper) 26%);padding-top:16px;margin-top:16px}
+@media(max-width:520px){
+  h1{font-size:22px} .score b{font-size:46px}
+  .gauges{grid-template-columns:repeat(5,1fr);gap:4px}
+  .g .lbl{font-size:9px}
+}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script src="data/bank.js"></script>
+<script src="data/subject1.js"></script>
+<script src="data/subject2.js"></script>
+<script src="data/subject3.js"></script>
+<script src="data/subject4.js"></script>
+<script src="data/subject5.js"></script>
+<script>
+/* ═══════════════ 저장소 (localStorage → window.storage → 메모리) ═══════════════ */
+const KEY = "jbg_trainer_v1";
+const Store = (() => {
+  let mem = null, kind = "memory";
+  try { localStorage.setItem("__t","1"); localStorage.removeItem("__t"); kind = "local"; } catch(e){}
+  return {
+    kind,
+    async load(){
+      if (kind === "local") { try { const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; } catch(e){ return null; } }
+      if (window.storage) { try { const r = await window.storage.get(KEY); return r && r.value ? JSON.parse(r.value) : null; } catch(e){ return mem; } }
+      return mem;
+    },
+    async save(d){
+      const s = JSON.stringify(d);
+      if (kind === "local") { try { localStorage.setItem(KEY, s); return; } catch(e){} }
+      if (window.storage) { try { await window.storage.set(KEY, s); return; } catch(e){} }
+      mem = d;
+    }
+  };
+})();
+
+/* ═══════════════ 상태 ═══════════════ */
+const SUBJ = {1:"소프트웨어 설계",2:"소프트웨어 개발",3:"데이터베이스 구축",4:"프로그래밍 언어 활용",5:"정보시스템 구축관리"};
+const INTERVAL = [0,1,2,4,8,16];           // Leitner 박스별 다음 복습까지 일수
+const BANK = window.QUESTIONS || [];
+const byId = Object.fromEntries(BANK.map(q => [q.id, q]));
+
+let DB = { v:1, stats:{}, days:{}, sessions:[] };
+let view = "home";
+let sess = null;          // {mode,queue,i,ans:{},startedAt,limitSec,label}
+let pickSubj = [1,2,3,4,5];
+let pickCount = 20;
+let tick = null;
+
+const todayKey = (d = new Date()) => {
+  const t = new Date(d.getTime() - d.getTimezoneOffset()*60000);
+  return t.toISOString().slice(0,10);
+};
+const addDays = (k, n) => { const d = new Date(k + "T00:00:00"); d.setDate(d.getDate()+n); return todayKey(d); };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const shuffle = a => { a = a.slice(); for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+const stat = id => DB.stats[id] || (DB.stats[id] = { seen:0, right:0, wrong:0, box:0, due:todayKey(), last:null });
+
+/* ═══════════════ 파생 지표 ═══════════════ */
+function dueList(){
+  const t = todayKey();
+  return BANK.filter(q => { const s = DB.stats[q.id]; return s && s.seen > 0 && s.due <= t; });
+}
+function weakList(){
+  return BANK.filter(q => { const s = DB.stats[q.id]; return s && s.seen >= 1 && s.wrong > 0; })
+    .sort((a,b) => {
+      const A = DB.stats[a.id], B = DB.stats[b.id];
+      const ra = A.right/A.seen, rb = B.right/B.seen;
+      return (ra - rb) || (B.wrong - A.wrong);
+    });
+}
+function subjMastery(s){
+  const qs = BANK.filter(q => q.s === s);
+  let seen = 0, score = 0;
+  qs.forEach(q => { const st = DB.stats[q.id]; if (st && st.seen) { seen++; score += Math.min(st.box,5)/5; } });
+  return { pct: qs.length ? Math.round(score/qs.length*100) : 0, seen, total: qs.length };
+}
+function streakDays(){
+  let n = 0, k = todayKey();
+  if (!DB.days[k]) k = addDays(k,-1);
+  while (DB.days[k] && DB.days[k].solved > 0) { n++; k = addDays(k,-1); }
+  return n;
+}
+const totalSolved = () => Object.values(DB.days).reduce((a,d) => a + d.solved, 0);
+const totalCorrect = () => Object.values(DB.days).reduce((a,d) => a + d.correct, 0);
+
+/* ═══════════════ 세션 ═══════════════ */
+function start(mode){
+  let queue = [], label = "", limitSec = 0;
+  if (mode === "mock"){
+    for (let s=1;s<=5;s++) queue = queue.concat(shuffle(BANK.filter(q=>q.s===s)).slice(0,20));
+    label = "실전 모의고사"; limitSec = 150*60;
+  } else if (mode === "review"){
+    queue = shuffle(dueList()).slice(0,40); label = "오늘의 복습";
+  } else if (mode === "weak"){
+    queue = weakList().slice(0, Math.min(30, weakList().length)); label = "약점 집중";
+  } else if (mode === "freq"){
+    queue = shuffle(BANK.filter(q => q.f === "A" && pickSubj.includes(q.s))).slice(0, pickCount); label = "고빈도 집중";
+  } else {
+    queue = shuffle(BANK.filter(q => pickSubj.includes(q.s))).slice(0, pickCount); label = "과목 학습";
+  }
+  if (!queue.length) return;
+  // 보기 순서를 매번 섞어 정답 위치를 외우는 것을 막습니다. o[표시위치] = 원본 보기 번호
+  queue = queue.map(q => Object.assign({}, q, { o: shuffle([0,1,2,3]) }));
+  sess = { mode, queue, i:0, ans:{}, startedAt:Date.now(), limitSec, label, revealed:false };
+  view = "quiz"; render();
+  if (limitSec) { clearInterval(tick); tick = setInterval(() => { const el = document.getElementById("timer"); if(!el||!sess) return; const left = tickLeft(); if (left <= 0) { clearInterval(tick); grade(); } else paintTimer(el, left); }, 1000); }
+}
+const tickLeft = () => sess.limitSec - Math.floor((Date.now()-sess.startedAt)/1000);
+function paintTimer(el, left){
+  const m = String(Math.floor(left/60)).padStart(2,"0"), s = String(left%60).padStart(2,"0");
+  el.textContent = m + ":" + s; el.className = "timer" + (left < 600 ? " warn" : "");
+}
+
+function answer(pos){
+  const q = sess.queue[sess.i];
+  if (sess.mode !== "mock" && sess.revealed) return;
+  const ci = q.o[pos];               // 표시 위치 → 원본 보기 번호
+  sess.ans[q.id] = ci;
+  if (sess.mode !== "mock") { sess.revealed = true; applySRS(q, ci === q.a); save(); }
+  render();
+}
+function applySRS(q, ok){
+  const st = stat(q.id);
+  st.seen++; st.last = todayKey();
+  if (ok){ st.right++; st.box = Math.min(5, st.box + 1); st.due = addDays(todayKey(), INTERVAL[st.box]); }
+  else   { st.wrong++; st.box = 1; st.due = todayKey(); }
+}
+function next(){
+  if (sess.i + 1 < sess.queue.length){ sess.i++; sess.revealed = false; render(); }
+  else grade();
+}
+function grade(){
+  clearInterval(tick);
+  if (sess.mode === "mock") sess.queue.forEach(q => applySRS(q, sess.ans[q.id] === q.a));
+  const k = todayKey();
+  const d = DB.days[k] || (DB.days[k] = { solved:0, correct:0, sec:0 });
+  const right = sess.queue.filter(q => sess.ans[q.id] === q.a).length;
+  d.solved += sess.queue.length; d.correct += right;
+  d.sec += Math.floor((Date.now() - sess.startedAt)/1000);
+  DB.sessions.unshift({ date:k, mode:sess.label, total:sess.queue.length, correct:right });
+  DB.sessions = DB.sessions.slice(0,40);
+  save(); view = "result"; render();
+}
+const save = () => Store.save(DB);
+
+/* ═══════════════ 뷰 ═══════════════ */
+function render(){
+  const app = document.getElementById("app");
+  app.innerHTML = view === "quiz" ? viewQuiz() : view === "result" ? viewResult() : view === "stats" ? viewStats() : viewHome();
+  window.scrollTo(0, view === "quiz" ? 0 : window.scrollY > 400 ? 0 : window.scrollY);
+  if (view === "quiz" && sess.limitSec){ const el = document.getElementById("timer"); if (el) paintTimer(el, tickLeft()); }
+}
+
+function header(sub){
+  return `<div class="top">
+    <div><div class="brand">engineer information processing · written</div>
+      <h1>정보처리기사 <em>필기 트레이너</em></h1></div>
+    <div class="streak">🔥 ${streakDays()}일 연속 · 누적 ${totalSolved()}문항</div>
+  </div>${sub||""}`;
+}
+
+function viewHome(){
+  const due = dueList().length, weak = weakList().length;
+  const acc = totalSolved() ? Math.round(totalCorrect()/totalSolved()*100) : 0;
+
+  const gauges = [1,2,3,4,5].map(s => {
+    const m = subjMastery(s), C = 2*Math.PI*30, off = C*(1-m.pct/100);
+    return `<div class="g"><div class="ring">
+      <svg viewBox="0 0 70 70"><circle cx="35" cy="35" r="30" fill="none" stroke="#E3E8EE" stroke-width="7"/>
+      <circle cx="35" cy="35" r="30" fill="none" stroke="var(--blue)" stroke-width="7" stroke-linecap="round"
+        stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/></svg>
+      <div class="val">${m.pct}</div></div>
+      <div class="lbl"><b>${s}과목</b>${SUBJ[s]}</div></div>`;
+  }).join("");
+
+  // 히트맵 12주
+  const cells = [];
+  const end = new Date(); const start = new Date(); start.setDate(end.getDate() - 83);
+  start.setDate(start.getDate() - start.getDay());
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)){
+    const k = todayKey(d), n = DB.days[k] ? DB.days[k].solved : 0;
+    const lv = n === 0 ? "" : n < 10 ? "l1" : n < 25 ? "l2" : n < 50 ? "l3" : "l4";
+    cells.push(`<div class="hc ${lv}" title="${k} · ${n}문항"></div>`);
+  }
+  let heat = "";
+  for (let i=0;i<cells.length;i+=7) heat += `<div class="hcol">${cells.slice(i,i+7).join("")}</div>`;
+
+  return header() + `
+  <div class="card"><h2>과목별 숙련도</h2><div class="gauges">${gauges}</div>
+    <div class="note">각 문항의 복습 단계(1~5)를 과목 전체 문항 수로 나눈 비율입니다. 반복해서 맞힐수록 올라갑니다.</div></div>
+
+  <div class="card"><h2>학습 흔적 · 최근 12주</h2><div class="heat">${heat}</div>
+    <div class="heat-legend"><span>적음</span><span class="hc"></span><span class="hc l1"></span><span class="hc l2"></span><span class="hc l3"></span><span class="hc l4"></span><span>많음</span>
+      <span style="margin-left:auto">누적 정답률 ${acc}%</span></div></div>
+
+  <div class="card"><h2>학습 시작</h2>
+    <div class="modes">
+      <button class="mode" onclick="start('review')" ${due?"":"disabled"}>
+        <div class="mt"><i class="dot d-teal"></i>오늘의 복습</div>
+        <div class="md">${due ? due + "문항이 복습 예정일에 도달" : "오늘 복습할 문항 없음"}</div></button>
+      <button class="mode" onclick="start('weak')" ${weak?"":"disabled"}>
+        <div class="mt"><i class="dot d-mag"></i>약점 집중</div>
+        <div class="md">${weak ? "자주 틀린 " + Math.min(weak,30) + "문항" : "아직 틀린 문항 없음"}</div></button>
+      <button class="mode" onclick="start('study')">
+        <div class="mt"><i class="dot d-blue"></i>과목 학습</div>
+        <div class="md">즉시 채점 + 해설</div></button>
+      <button class="mode" onclick="start('freq')">
+        <div class="mt"><i class="dot d-amber"></i>고빈도 집중</div>
+        <div class="md">출제 빈도 A등급만</div></button>
+      <button class="mode" onclick="start('mock')">
+        <div class="mt"><i class="dot d-blue"></i>실전 모의고사</div>
+        <div class="md">100문항 · 150분 · 일괄 채점</div></button>
+    </div>
+  </div>
+
+  <div class="card"><h2>과목 선택 · 문항 수</h2>
+    <div class="chips">${[1,2,3,4,5].map(s=>`<button class="chip ${pickSubj.includes(s)?"on":""}" onclick="toggleSubj(${s})">${s}과목 ${SUBJ[s]}<small>${BANK.filter(q=>q.s===s).length}</small></button>`).join("")}</div>
+    <div class="chips" style="margin-top:10px">${[10,20,30,50].map(n=>`<button class="chip ${pickCount===n?"on":""}" onclick="setCount(${n})">${n}문항</button>`).join("")}</div>
+    <div class="note">'과목 학습'과 '고빈도 집중'에 적용됩니다. 복습·약점·모의고사는 자동으로 범위가 정해집니다.</div>
+  </div>
+
+  <div class="row"><button class="btn btn-ghost" onclick="go('stats')">오답노트 · 통계 보기</button></div>`;
+}
+
+function viewQuiz(){
+  const q = sess.queue[sess.i], sel = sess.ans[q.id], rev = sess.mode !== "mock" && sess.revealed;
+  const st = DB.stats[q.id];
+  const opts = q.o.map((orig,pos) => {
+    let cls = "opt";
+    if (rev){ cls += orig === q.a ? " ok" : (orig === sel ? " no" : " dis"); }
+    else if (orig === sel) cls += " sel";
+    return `<button class="${cls}" onclick="answer(${pos})"><span class="n">${"①②③④"[pos]}</span><span>${esc(q.c[orig])}</span></button>`;
+  }).join("");
+
+  let expl = "";
+  if (rev){
+    const ok = sel === q.a, s2 = DB.stats[q.id];
+    expl = `<div class="expl ${ok?"":"bad"}">
+      <div class="vd">${ok ? "정답" : "오답 — 정답 " + "①②③④"[q.o.indexOf(q.a)]}</div>
+      <p>${esc(q.e)}</p>
+      <div class="srs">복습 단계 ${s2.box}/5 · 다음 복습 ${s2.due} · 이 문항 ${s2.right}/${s2.seen} 정답</div></div>`;
+  }
+
+  return `<div class="row spread">
+      <button class="btn btn-ghost" onclick="quit()">← 나가기</button>
+      <div class="timer">${sess.label} · <span class="f">${sess.i+1}/${sess.queue.length}</span></div>
+      ${sess.limitSec ? `<span id="timer" class="timer">--:--</span>` : `<span class="timer">${st ? "복습 " + st.box + "/5" : "첫 학습"}</span>`}
+    </div>
+    <div class="progress"><i style="width:${(sess.i+1)/sess.queue.length*100}%"></i></div>
+    <div class="card">
+      <div class="meta">
+        <span class="tag">${q.s}과목 ${SUBJ[q.s]}</span>
+        <span class="tag t2">${esc(q.t)}</span>
+        <span class="tag ${q.f==="A"?"t3":"t4"}">빈도 ${q.f}</span>
+      </div>
+      <div class="qtext">${esc(q.q)}</div>
+      <div class="opts">${opts}</div>
+      ${expl}
+    </div>
+    <div class="sticky row spread">
+      <button class="btn btn-ghost" onclick="prev()" ${sess.i?"":"disabled"}>이전</button>
+      <button class="btn btn-primary" onclick="next()" ${sess.mode!=="mock"&&!sess.revealed?"disabled":""}>
+        ${sess.i+1===sess.queue.length?"채점하기":"다음"}</button>
+    </div>`;
+}
+
+function viewResult(){
+  const qs = sess.queue;
+  const right = qs.filter(q => sess.ans[q.id] === q.a);
+  const wrong = qs.filter(q => sess.ans[q.id] !== q.a);
+  const score = Math.round(right.length/qs.length*100);
+  const mins = Math.max(1, Math.round((Date.now()-sess.startedAt)/60000));
+
+  const bySub = {};
+  qs.forEach(q => { const b = bySub[q.s] || (bySub[q.s] = {t:0,c:0}); b.t++; if (sess.ans[q.id]===q.a) b.c++; });
+  const fail = Object.entries(bySub).filter(([,v]) => v.c/v.t < 0.4).map(([s]) => s+"과목");
+
+  const lines = Object.entries(bySub).map(([s,v]) => {
+    const p = Math.round(v.c/v.t*100), col = p >= 60 ? "var(--teal)" : p >= 40 ? "var(--amber)" : "var(--mag)";
+    return `<div class="sline"><span>${s}과목 ${SUBJ[s]}</span><span class="f" style="color:${col}">${v.c}/${v.t} · ${p}%</span></div>
+      <div class="bar"><i style="width:${p}%;background:${col}"></i></div>`;
+  }).join("");
+
+  const revs = wrong.map(q => `<div class="rev">
+      <div class="meta"><span class="tag">${q.s}과목</span><span class="tag t2">${esc(q.t)}</span></div>
+      <div class="rq">${esc(q.q)}</div>
+      <div class="ra">정답 ${"①②③④"[q.o.indexOf(q.a)]} ${esc(q.c[q.a])}</div>
+      ${sess.ans[q.id]!==undefined ? `<div class="rw">선택 ${"①②③④"[q.o.indexOf(sess.ans[q.id])]} ${esc(q.c[sess.ans[q.id]])}</div>` : `<div class="rw">미응답</div>`}
+      <div class="re">${esc(q.e)}</div></div>`).join("");
+
+  return header() + `
+  <div class="card">
+    <div class="score"><b style="color:${score>=60?"var(--teal)":"var(--mag)"}">${score}</b>
+      <span>점 · ${right.length}/${qs.length}문항 · ${mins}분<br>
+      ${sess.mode==="mock" ? (score>=60 && !fail.length ? "합격 기준 충족" : fail.length ? "과락 위험: "+fail.join(", ")+" (40점 미만)" : "평균 60점 미만") : (score>=60?"기준선 통과":"기준선 미달")}</span></div>
+    ${lines}
+  </div>
+  ${wrong.length ? `<div class="card"><h2>틀린 문제 ${wrong.length}개 · 복습 큐에 등록됨</h2>${revs}</div>` : `<div class="card"><h2>완벽</h2><div class="empty">틀린 문항이 없습니다. 복습 간격이 늘어났습니다.</div></div>`}
+  <div class="row">
+    <button class="btn btn-primary" onclick="go('home')">대시보드</button>
+    ${wrong.length ? `<button class="btn btn-mag" onclick="start('weak')">약점 바로 복습</button>` : ""}
+    <button class="btn btn-ghost" onclick="go('stats')">통계 보기</button>
+  </div>`;
+}
+
+function viewStats(){
+  const weak = weakList().slice(0,20);
+  const rows = weak.map(q => { const s = DB.stats[q.id];
+    return `<tr><td><b>${q.s}과목</b> ${esc(q.t)}<br><span style="color:var(--ink2);font-size:12.5px">${esc(q.q.split("\n")[0]).slice(0,58)}…</span></td>
+      <td class="num" style="color:var(--mag)">${s.wrong}회</td><td class="num">${Math.round(s.right/s.seen*100)}%</td><td class="num">${s.box}/5</td></tr>`;
+  }).join("");
+
+  const topics = {};
+  BANK.forEach(q => { const s = DB.stats[q.id]; if (!s || !s.seen) return;
+    const k = q.s + "|" + q.t; const t = topics[k] || (topics[k] = {seen:0,right:0,s:q.s,t:q.t});
+    t.seen += s.seen; t.right += s.right; });
+  const tr = Object.values(topics).filter(t=>t.seen>=2).sort((a,b)=>a.right/a.seen - b.right/b.seen).slice(0,10)
+    .map(t => { const p = Math.round(t.right/t.seen*100);
+      return `<tr><td><b>${t.s}과목</b> ${esc(t.t)}</td><td class="num">${t.right}/${t.seen}</td>
+        <td style="width:34%"><div class="bar"><i style="width:${p}%;background:${p>=60?"var(--teal)":p>=40?"var(--amber)":"var(--mag)"}"></i></div></td></tr>`; }).join("");
+
+  const hist = DB.sessions.slice(0,12).map(s =>
+    `<tr><td>${s.date}</td><td>${esc(s.mode)}</td><td class="num">${s.correct}/${s.total}</td>
+     <td class="num">${Math.round(s.correct/s.total*100)}%</td></tr>`).join("");
+
+  return header() + `
+  <div class="card"><h2>자주 틀리는 문제 TOP 20</h2>
+    ${weak.length ? `<table><tr><th>문항</th><th style="text-align:right">오답</th><th style="text-align:right">정답률</th><th style="text-align:right">단계</th></tr>${rows}</table>`
+      : `<div class="empty">아직 데이터가 없습니다. 학습을 시작하면 여기에 쌓입니다.</div>`}
+  </div>
+
+  <div class="card"><h2>약한 토픽</h2>
+    ${tr ? `<table>${tr}</table>` : `<div class="empty">같은 토픽을 2회 이상 풀면 표시됩니다.</div>`}
+  </div>
+
+  <div class="card"><h2>최근 학습 기록</h2>
+    ${hist ? `<table><tr><th>날짜</th><th>모드</th><th style="text-align:right">점수</th><th style="text-align:right">정답률</th></tr>${hist}</table>`
+      : `<div class="empty">기록 없음</div>`}
+  </div>
+
+  <div class="card"><h2>기기 간 이동 · 백업</h2>
+    <div class="note" style="margin-top:0">학습 기록은 이 브라우저에만 저장됩니다. 다른 기기에서 이어서 하려면 아래 코드를 복사해 옮긴 뒤 붙여넣고 [불러오기]를 누르세요.</div>
+    <textarea id="bk" placeholder="여기에 백업 코드를 붙여넣으세요"></textarea>
+    <div class="row" style="margin-top:9px">
+      <button class="btn btn-ghost" onclick="doExport()">현재 기록 내보내기</button>
+      <button class="btn btn-primary" onclick="doImport()">불러오기</button>
+      <button class="btn btn-mag" onclick="doReset()">전체 초기화</button>
+    </div>
+    <div class="note" id="bkmsg">저장 방식: ${Store.kind === "local" ? "브라우저 localStorage (영구)" : "임시 저장 — 이 화면을 닫으면 사라집니다"}</div>
+  </div>
+
+  <div class="row"><button class="btn btn-ghost" onclick="go('home')">← 대시보드</button></div>`;
+}
+
+/* ═══════════════ 액션 ═══════════════ */
+function go(v){ view = v; render(); }
+function quit(){ clearInterval(tick); sess = null; go("home"); }
+function prev(){ if (sess.i){ sess.i--; sess.revealed = sess.mode !== "mock" && sess.ans[sess.queue[sess.i].id] !== undefined; render(); } }
+function toggleSubj(s){ pickSubj = pickSubj.includes(s) ? pickSubj.filter(x=>x!==s) : pickSubj.concat(s); if(!pickSubj.length) pickSubj=[s]; render(); }
+function setCount(n){ pickCount = n; render(); }
+function doExport(){ document.getElementById("bk").value = btoa(unescape(encodeURIComponent(JSON.stringify(DB)))); document.getElementById("bkmsg").textContent = "내보내기 완료 — 위 코드를 전체 복사하세요."; }
+function doImport(){
+  const v = document.getElementById("bk").value.trim(); if (!v) return;
+  try { const d = JSON.parse(decodeURIComponent(escape(atob(v))));
+    if (!d.stats || !d.days) throw 0;
+    DB = d; save(); document.getElementById("bkmsg").textContent = "불러오기 완료."; render();
+  } catch(e){ document.getElementById("bkmsg").textContent = "코드를 읽을 수 없습니다. 전체를 정확히 붙여넣었는지 확인하세요."; }
+}
+function doReset(){ if (confirm("모든 학습 기록이 삭제됩니다. 계속할까요?")){ DB = {v:1,stats:{},days:{},sessions:[]}; save(); go("home"); } }
+
+/* ═══════════════ 오프라인(PWA) ═══════════════ */
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+
+/* ═══════════════ 시작 ═══════════════ */
+(async () => {
+  const d = await Store.load();
+  if (d && d.stats) DB = Object.assign({v:1,stats:{},days:{},sessions:[]}, d);
+  render();
+})();
+</script>
+</body>
+</html>
