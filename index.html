@@ -199,12 +199,14 @@ function dueList(){
   const t = todayKey();
   return BANK.filter(q => { const s = DB.stats[q.id]; return s && s.seen > 0 && s.due <= t; });
 }
+/* 약점 = 틀렸거나, 찍어서 맞혔거나, 모르겠다고 표시한 문항.
+   확신 정답률이 낮은 순으로 정렬합니다. */
 function weakList(){
-  return BANK.filter(q => { const s = DB.stats[q.id]; return s && s.seen >= 1 && s.wrong > 0; })
+  const risk = s => (s.wrong||0) + (s.lucky||0) + (s.unsure||0);
+  return BANK.filter(q => { const s = DB.stats[q.id]; return s && s.seen >= 1 && risk(s) > 0; })
     .sort((a,b) => {
       const A = DB.stats[a.id], B = DB.stats[b.id];
-      const ra = A.right/A.seen, rb = B.right/B.seen;
-      return (ra - rb) || (B.wrong - A.wrong);
+      return (A.right/A.seen - B.right/B.seen) || (risk(B) - risk(A));
     });
 }
 function subjMastery(s){
@@ -221,6 +223,7 @@ function streakDays(){
 }
 const totalSolved = () => Object.values(DB.days).reduce((a,d) => a + d.solved, 0);
 const totalCorrect = () => Object.values(DB.days).reduce((a,d) => a + d.correct, 0);
+const totalSolid = () => Object.values(DB.days).reduce((a,d) => a + (d.solid||0), 0);
 
 /* ═══════════════ 세션 ═══════════════ */
 function start(mode){
@@ -240,7 +243,8 @@ function start(mode){
   if (!queue.length) return;
   // 보기 순서를 매번 섞어 정답 위치를 외우는 것을 막습니다. o[표시위치] = 원본 보기 번호
   queue = queue.map(q => Object.assign({}, q, { o: shuffle([0,1,2,3]) }));
-  sess = { mode, queue, i:0, ans:{}, startedAt:Date.now(), limitSec, label, revealed:false };
+  // mark[문항id] = "guess"(찍음) | "unsure"(모르겠음). 없으면 확신 있는 응답.
+  sess = { mode, queue, i:0, ans:{}, mark:{}, startedAt:Date.now(), limitSec, label, revealed:false };
   view = "quiz"; render();
   if (limitSec) { clearInterval(tick); tick = setInterval(() => { const el = document.getElementById("timer"); if(!el||!sess) return; const left = tickLeft(); if (left <= 0) { clearInterval(tick); grade(); } else paintTimer(el, left); }, 1000); }
 }
@@ -255,14 +259,56 @@ function answer(pos){
   if (sess.mode !== "mock" && sess.revealed) return;
   const ci = q.o[pos];               // 표시 위치 → 원본 보기 번호
   sess.ans[q.id] = ci;
-  if (sess.mode !== "mock") { sess.revealed = true; applySRS(q, ci === q.a); save(); }
+  if (sess.mode !== "mock") { sess.revealed = true; applySRS(q, ci === q.a, sess.mark[q.id]); save(); }
   render();
 }
-function applySRS(q, ok){
+
+/* 모르겠음 — 답을 고르지 않고 해설을 봅니다. 정답 처리되지 않습니다. */
+function unsure(){
+  const q = sess.queue[sess.i];
+  if (sess.mode === "mock"){ toggleGuess(); return; }
+  if (sess.revealed) return;
+  sess.ans[q.id] = -1;
+  sess.mark[q.id] = "unsure";
+  sess.revealed = true;
+  applySRS(q, false, "unsure");
+  save(); render();
+}
+
+/* 시험 모드에서 '찍음' 표시를 켜고 끕니다. */
+function toggleGuess(){
+  const q = sess.queue[sess.i];
+  if (sess.mark[q.id] === "guess") delete sess.mark[q.id];
+  else sess.mark[q.id] = "guess";
+  render();
+}
+
+/* 맞힌 뒤 스스로 '사실 찍었다'고 정정하는 경우 — 기록을 되돌립니다. */
+function admitGuess(){
+  const q = sess.queue[sess.i];
+  if (sess.mark[q.id]) return;
+  sess.mark[q.id] = "guess";
+  const st = stat(q.id);
+  st.right = Math.max(0, st.right - 1);
+  st.lucky = (st.lucky || 0) + 1;
+  st.box = 1; st.due = todayKey();
+  save(); render();
+}
+
+/* 확신 있는 정답만 복습 간격이 늘어납니다.
+   찍어서 맞힌 것과 모르겠음은 오답과 동일하게 내일 다시 나옵니다. */
+function applySRS(q, ok, mark){
   const st = stat(q.id);
   st.seen++; st.last = todayKey();
-  if (ok){ st.right++; st.box = Math.min(5, st.box + 1); st.due = addDays(todayKey(), INTERVAL[st.box]); }
-  else   { st.wrong++; st.box = 1; st.due = todayKey(); }
+  if (mark === "unsure"){
+    st.unsure = (st.unsure || 0) + 1; st.box = 1; st.due = todayKey();
+  } else if (ok && mark === "guess"){
+    st.lucky = (st.lucky || 0) + 1;  st.box = 1; st.due = todayKey();
+  } else if (ok){
+    st.right++; st.box = Math.min(5, st.box + 1); st.due = addDays(todayKey(), INTERVAL[st.box]);
+  } else {
+    st.wrong++; st.box = 1; st.due = todayKey();
+  }
 }
 function next(){
   if (sess.i + 1 < sess.queue.length){ sess.i++; sess.revealed = false; render(); }
@@ -270,13 +316,15 @@ function next(){
 }
 function grade(){
   clearInterval(tick);
-  if (sess.mode === "mock") sess.queue.forEach(q => applySRS(q, sess.ans[q.id] === q.a));
+  if (sess.mode === "mock") sess.queue.forEach(q => applySRS(q, sess.ans[q.id] === q.a, sess.mark[q.id]));
   const k = todayKey();
-  const d = DB.days[k] || (DB.days[k] = { solved:0, correct:0, sec:0 });
+  const d = DB.days[k] || (DB.days[k] = { solved:0, correct:0, solid:0, sec:0 });
+  if (d.solid === undefined) d.solid = 0;
   const right = sess.queue.filter(q => sess.ans[q.id] === q.a).length;
-  d.solved += sess.queue.length; d.correct += right;
+  const solid = sess.queue.filter(q => sess.ans[q.id] === q.a && !sess.mark[q.id]).length;
+  d.solved += sess.queue.length; d.correct += right; d.solid += solid;
   d.sec += Math.floor((Date.now() - sess.startedAt)/1000);
-  DB.sessions.unshift({ date:k, mode:sess.label, total:sess.queue.length, correct:right });
+  DB.sessions.unshift({ date:k, mode:sess.label, total:sess.queue.length, correct:right, solid:solid });
   DB.sessions = DB.sessions.slice(0,40);
   save(); view = "result"; render();
 }
@@ -330,7 +378,7 @@ function viewHome(){
 
   <div class="card"><h2>학습 흔적 · 최근 12주</h2><div class="heat">${heat}</div>
     <div class="heat-legend"><span>적음</span><span class="hc"></span><span class="hc l1"></span><span class="hc l2"></span><span class="hc l3"></span><span class="hc l4"></span><span>많음</span>
-      <span style="margin-left:auto">누적 정답률 ${acc}%</span></div></div>
+      <span style="margin-left:auto">누적 정답률 ${acc}% · 실력 ${totalSolved()?Math.round(totalSolid()/totalSolved()*100):0}%</span></div></div>
 
   <div class="card"><h2>학습 시작</h2>
     <div class="modes">
@@ -339,7 +387,7 @@ function viewHome(){
         <div class="md">${due ? due + "문항이 복습 예정일에 도달" : "오늘 복습할 문항 없음"}</div></button>
       <button class="mode" onclick="start('weak')" ${weak?"":"disabled"}>
         <div class="mt"><i class="dot d-mag"></i>약점 집중</div>
-        <div class="md">${weak ? "자주 틀린 " + Math.min(weak,30) + "문항" : "아직 틀린 문항 없음"}</div></button>
+        <div class="md">${weak ? "틀렸거나 찍은 " + Math.min(weak,30) + "문항" : "아직 약점 없음"}</div></button>
       <button class="mode" onclick="start('study')">
         <div class="mt"><i class="dot d-blue"></i>과목 학습</div>
         <div class="md">즉시 채점 + 해설</div></button>
@@ -371,13 +419,25 @@ function viewQuiz(){
     return `<button class="${cls}" onclick="answer(${pos})"><span class="n">${"①②③④"[pos]}</span><span>${esc(q.c[orig])}</span></button>`;
   }).join("");
 
+  const mk = sess.mark[q.id];
+  const guessBtn = sess.mode === "mock"
+    ? `<button class="btn ${mk==="guess"?"btn-mag":"btn-ghost"}" onclick="toggleGuess()">
+         ${mk==="guess" ? "🎲 찍음으로 표시됨 (해제)" : "🎲 확신 없음 — 찍었다고 표시"}</button>`
+    : (rev ? "" : `<button class="btn btn-ghost" onclick="unsure()">❓ 모르겠음 — 답과 해설 보기</button>`);
+
   let expl = "";
   if (rev){
     const ok = sel === q.a, s2 = DB.stats[q.id];
-    expl = `<div class="expl ${ok?"":"bad"}">
-      <div class="vd">${ok ? "정답" : "오답 — 정답 " + "①②③④"[q.o.indexOf(q.a)]}</div>
+    const vd = mk === "unsure" ? "모르겠음 — 정답 " + "①②③④"[q.o.indexOf(q.a)]
+             : mk === "guess" && ok ? "찍어서 맞힘 — 아직 아는 문제가 아닙니다"
+             : ok ? "정답" : "오답 — 정답 " + "①②③④"[q.o.indexOf(q.a)];
+    const solid = ok && !mk;
+    expl = `<div class="expl ${solid?"":"bad"}">
+      <div class="vd">${vd}</div>
       <p>${esc(q.e)}</p>
-      <div class="srs">복습 단계 ${s2.box}/5 · 다음 복습 ${s2.due} · 이 문항 ${s2.right}/${s2.seen} 정답</div></div>`;
+      <div class="srs">복습 단계 ${s2.box}/5 · 다음 복습 ${s2.due} · 확신 정답 ${s2.right}/${s2.seen}${s2.lucky?" · 찍어 맞힘 "+s2.lucky:""}${s2.unsure?" · 모르겠음 "+s2.unsure:""}</div>
+      ${solid ? `<button class="btn btn-ghost" style="margin-top:10px;padding:7px 14px;font-size:12.5px" onclick="admitGuess()">사실 찍었습니다 — 다시 복습 대상으로</button>` : ""}
+    </div>`;
   }
 
   return `<div class="row spread">
@@ -394,6 +454,7 @@ function viewQuiz(){
       </div>
       <div class="qtext">${esc(q.q)}</div>
       <div class="opts">${opts}</div>
+      ${guessBtn ? `<div class="row" style="margin-top:12px">${guessBtn}</div>` : ""}
       ${expl}
     </div>
     <div class="sticky row spread">
@@ -406,8 +467,11 @@ function viewQuiz(){
 function viewResult(){
   const qs = sess.queue;
   const right = qs.filter(q => sess.ans[q.id] === q.a);
+  const solid = qs.filter(q => sess.ans[q.id] === q.a && !sess.mark[q.id]);
+  const lucky = qs.filter(q => sess.ans[q.id] === q.a && sess.mark[q.id] === "guess");
   const wrong = qs.filter(q => sess.ans[q.id] !== q.a);
   const score = Math.round(right.length/qs.length*100);
+  const real  = Math.round(solid.length/qs.length*100);
   const mins = Math.max(1, Math.round((Date.now()-sess.startedAt)/60000));
 
   const bySub = {};
@@ -420,24 +484,38 @@ function viewResult(){
       <div class="bar"><i style="width:${p}%;background:${col}"></i></div>`;
   }).join("");
 
-  const revs = wrong.map(q => `<div class="rev">
-      <div class="meta"><span class="tag">${q.s}과목</span><span class="tag t2">${esc(q.t)}</span></div>
+  const review = wrong.concat(lucky);
+  const revs = review.map(q => {
+    const mk = sess.mark[q.id], sel = sess.ans[q.id];
+    const badge = mk === "guess" ? `<span class="tag t3">찍어서 맞힘</span>`
+                : mk === "unsure" ? `<span class="tag t3">모르겠음</span>` : "";
+    let picked;
+    if (mk === "unsure" || sel === -1 || sel === undefined) picked = `<div class="rw">답을 고르지 않음</div>`;
+    else if (sel === q.a) picked = `<div class="rw">맞혔지만 확신이 없었습니다</div>`;
+    else picked = `<div class="rw">선택 ${"①②③④"[q.o.indexOf(sel)]} ${esc(q.c[sel])}</div>`;
+    return `<div class="rev">
+      <div class="meta"><span class="tag">${q.s}과목</span><span class="tag t2">${esc(q.t)}</span>${badge}</div>
       <div class="rq">${esc(q.q)}</div>
       <div class="ra">정답 ${"①②③④"[q.o.indexOf(q.a)]} ${esc(q.c[q.a])}</div>
-      ${sess.ans[q.id]!==undefined ? `<div class="rw">선택 ${"①②③④"[q.o.indexOf(sess.ans[q.id])]} ${esc(q.c[sess.ans[q.id]])}</div>` : `<div class="rw">미응답</div>`}
-      <div class="re">${esc(q.e)}</div></div>`).join("");
+      ${picked}
+      <div class="re">${esc(q.e)}</div></div>`;
+  }).join("");
 
   return header() + `
   <div class="card">
     <div class="score"><b style="color:${score>=60?"var(--teal)":"var(--mag)"}">${score}</b>
       <span>점 · ${right.length}/${qs.length}문항 · ${mins}분<br>
       ${sess.mode==="mock" ? (score>=60 && !fail.length ? "합격 기준 충족" : fail.length ? "과락 위험: "+fail.join(", ")+" (40점 미만)" : "평균 60점 미만") : (score>=60?"기준선 통과":"기준선 미달")}</span></div>
+    ${lucky.length ? `<div style="margin-top:14px;padding:12px 14px;border-radius:9px;background:var(--amber-soft);border-left:3px solid var(--amber)">
+      <div style="font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--amber)">실력 점수 ${real}점</div>
+      <div style="font-size:13.5px;margin-top:5px">확신 정답 ${solid.length} · 찍어서 맞힘 ${lucky.length} · 오답 ${wrong.length}<br>
+      <span style="color:var(--ink2)">찍어서 맞힌 ${lucky.length}문항은 아직 아는 문제가 아닙니다. 복습 큐에 넣었습니다.</span></div></div>` : ""}
     ${lines}
   </div>
-  ${wrong.length ? `<div class="card"><h2>틀린 문제 ${wrong.length}개 · 복습 큐에 등록됨</h2>${revs}</div>` : `<div class="card"><h2>완벽</h2><div class="empty">틀린 문항이 없습니다. 복습 간격이 늘어났습니다.</div></div>`}
+  ${review.length ? `<div class="card"><h2>다시 볼 문제 ${review.length}개 · 복습 큐에 등록됨</h2>${revs}</div>` : `<div class="card"><h2>완벽</h2><div class="empty">전부 확신을 갖고 맞혔습니다. 복습 간격이 늘어났습니다.</div></div>`}
   <div class="row">
     <button class="btn btn-primary" onclick="go('home')">대시보드</button>
-    ${wrong.length ? `<button class="btn btn-mag" onclick="start('weak')">약점 바로 복습</button>` : ""}
+    ${review.length ? `<button class="btn btn-mag" onclick="start('weak')">약한 문제 바로 복습</button>` : ""}
     <button class="btn btn-ghost" onclick="go('stats')">통계 보기</button>
   </div>`;
 }
@@ -445,9 +523,14 @@ function viewResult(){
 function viewStats(){
   const weak = weakList().slice(0,20);
   const rows = weak.map(q => { const s = DB.stats[q.id];
+    const risky = (s.lucky||0) + (s.unsure||0);
     return `<tr><td><b>${q.s}과목</b> ${esc(q.t)}<br><span style="color:var(--ink2);font-size:12.5px">${esc(q.q.split("\n")[0]).slice(0,58)}…</span></td>
-      <td class="num" style="color:var(--mag)">${s.wrong}회</td><td class="num">${Math.round(s.right/s.seen*100)}%</td><td class="num">${s.box}/5</td></tr>`;
+      <td class="num" style="color:var(--mag)">${s.wrong||0}</td>
+      <td class="num" style="color:var(--amber)">${risky||"-"}</td>
+      <td class="num">${Math.round(s.right/s.seen*100)}%</td><td class="num">${s.box}/5</td></tr>`;
   }).join("");
+  const luckyTotal = BANK.reduce((n,q) => n + ((DB.stats[q.id]&&DB.stats[q.id].lucky)||0), 0);
+  const unsureTotal = BANK.reduce((n,q) => n + ((DB.stats[q.id]&&DB.stats[q.id].unsure)||0), 0);
 
   const topics = {};
   BANK.forEach(q => { const s = DB.stats[q.id]; if (!s || !s.seen) return;
@@ -460,11 +543,14 @@ function viewStats(){
 
   const hist = DB.sessions.slice(0,12).map(s =>
     `<tr><td>${s.date}</td><td>${esc(s.mode)}</td><td class="num">${s.correct}/${s.total}</td>
-     <td class="num">${Math.round(s.correct/s.total*100)}%</td></tr>`).join("");
+     <td class="num">${Math.round(s.correct/s.total*100)}%</td>
+     <td class="num" style="color:var(--teal)">${s.solid!==undefined?Math.round(s.solid/s.total*100)+"%":"-"}</td></tr>`).join("");
 
   return header() + `
-  <div class="card"><h2>자주 틀리는 문제 TOP 20</h2>
-    ${weak.length ? `<table><tr><th>문항</th><th style="text-align:right">오답</th><th style="text-align:right">정답률</th><th style="text-align:right">단계</th></tr>${rows}</table>`
+  <div class="card"><h2>약한 문제 TOP 20</h2>
+    ${weak.length ? `<table><tr><th>문항</th><th style="text-align:right">오답</th><th style="text-align:right">찍음·모름</th><th style="text-align:right">확신 정답률</th><th style="text-align:right">단계</th></tr>${rows}</table>
+      <div class="note">확신 정답률은 찍어서 맞힌 것을 제외한 실제 실력 지표입니다.
+      ${luckyTotal||unsureTotal ? `지금까지 찍어서 맞힌 ${luckyTotal}회, 모르겠다고 표시한 ${unsureTotal}회가 복습 대상으로 잡혀 있습니다.` : ""}</div>`
       : `<div class="empty">아직 데이터가 없습니다. 학습을 시작하면 여기에 쌓입니다.</div>`}
   </div>
 
@@ -473,7 +559,8 @@ function viewStats(){
   </div>
 
   <div class="card"><h2>최근 학습 기록</h2>
-    ${hist ? `<table><tr><th>날짜</th><th>모드</th><th style="text-align:right">점수</th><th style="text-align:right">정답률</th></tr>${hist}</table>`
+    ${hist ? `<table><tr><th>날짜</th><th>모드</th><th style="text-align:right">점수</th><th style="text-align:right">정답률</th><th style="text-align:right">실력</th></tr>${hist}</table>
+      <div class="note">'실력'은 찍지 않고 확신을 갖고 맞힌 비율입니다. 두 값의 차이가 크면 아직 이해가 얕다는 뜻입니다.</div>`
       : `<div class="empty">기록 없음</div>`}
   </div>
 
