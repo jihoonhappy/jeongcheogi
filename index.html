@@ -120,6 +120,11 @@ h1 em{font-style:normal;color:var(--blue)}
 .lsbig{width:132px;height:132px;border-radius:66px;border:2px solid var(--line);background:#FCFDFE;
   font-size:40px;line-height:1;color:var(--ink2);cursor:pointer;transition:.12s;display:inline-flex;align-items:center;justify-content:center}
 .lsbig.on{border-color:var(--blue);background:var(--blue-soft);color:var(--blue)}
+.lsbig.mic{border-color:var(--mag);background:var(--mag-soft);color:var(--mag);animation:pulse 1.1s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+.lsphase.mic{color:var(--mag)}
+.lsscore{margin-top:6px;font-family:var(--mono);font-size:12.5px;color:var(--ink2)}
+.lsheard{margin-top:12px;font-size:13px;color:var(--ink2)}
 .lsbig:active{transform:scale(.96)}
 .lsrow{display:flex;gap:8px;justify-content:center;margin-top:18px}
 .lsbtn{flex:1;max-width:130px;padding:14px 8px;font-size:14px}
@@ -382,58 +387,146 @@ function grade(){
 }
 const save = () => Store.save(DB);
 
-/* ═══════════════ 듣기 모드 ═══════════════
-   화면을 보지 않고 귀로만 학습합니다. 학습 기록(SRS)은 건드리지 않습니다.
-   브라우저 내장 음성 합성(Web Speech API)을 사용하므로 별도 파일이 필요 없습니다. */
+/* ═══════════════ 듣기 · 말하기 모드 ═══════════════
+   듣기: 화면을 보지 않고 귀로만 학습합니다. 학습 기록은 건드리지 않습니다.
+   말하기: 문제를 들은 뒤 마이크로 정답 번호를 말합니다. 학습 기록에 반영됩니다.
+   둘 다 브라우저 내장 기능(Web Speech API)을 쓰므로 별도 파일이나 서버가 필요 없습니다. */
 const TTS = window.speechSynthesis || null;
-let LS = { queue:[], i:0, step:0, steps:[], playing:false, rate:1, gap:5,
-           skipped:0, voice:null, wake:null, keepAlive:null, timer:null };
+const SRec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+let LS = { queue:[], i:0, step:0, steps:[], playing:false, rate:1, gap:5, skipped:0,
+           voice:null, wake:null, keepAlive:null, timer:null,
+           talk:false, rec:null, listening:false, said:null, heard:"", tries:0,
+           right:0, wrong:0, unsure:0, done:false, startedAt:0 };
+
+/* 영문 약어를 한글 발음으로 바꿉니다. 음성 엔진이 영어를 어색하게 읽는 것을 막는,
+   자연스러움에 가장 큰 영향을 주는 처리입니다. 긴 것부터 치환합니다. */
+const ABBR = {
+  "NoSQL":"노에스큐엘","DBMS":"디비엠에스","KWCAG":"케이더블유시에이지","COCOMO":"코코모",
+  "HTTPS":"에이치티티피에스","HTTP":"에이치티티피","JSON":"제이슨","XML":"엑스엠엘",
+  "SOAP":"소프","REST":"레스트","AJAX":"에이잭스","WSDL":"더블유에스디엘","UDDI":"유디디아이",
+  "JDBC":"제이디비시","ODBC":"오디비시","ORM":"오알엠","SQL":"에스큐엘","UML":"유엠엘",
+  "DDL":"디디엘","DML":"디엠엘","DCL":"디시엘","TCL":"티시엘","ACID":"에이시아이디",
+  "CRUD":"크러드","ERD":"이알디","BCNF":"비시엔에프","ETL":"이티엘","CDC":"시디시",
+  "ODS":"오디에스","EAI":"이에이아이","ESB":"이에스비","CAP":"캡","OLAP":"올랩",
+  "OSI":"오에스아이","TCP":"티시피","UDP":"유디피","ICMP":"아이시엠피","ARP":"에이알피",
+  "DHCP":"디에이치시피","DNS":"디엔에스","NAT":"낫","CRC":"시알시","ARQ":"에이알큐",
+  "IPv6":"아이피브이식스","IPv4":"아이피브이포","VLSM":"브이엘에스엠","CIDR":"사이더",
+  "OSPF":"오에스피에프","EIGRP":"이아이지알피","IGRP":"아이지알피","BGP":"비지피","RIP":"립",
+  "FIFO":"파이포","LIFO":"라이포","LRU":"엘알유","LFU":"엘에프유","SJF":"에스제이에프",
+  "HRN":"에이치알엔","FCFS":"에프시에프에스","SRT":"에스알티","PCB":"피시비","IPC":"아이피시",
+  "CPU":"시피유","RAM":"램","MVVM":"엠브이브이엠","MVC":"엠브이시","MVP":"엠브이피",
+  "DAO":"디에이오","DTO":"디티오","VO":"브이오","WAS":"와스","JVM":"제이브이엠","IDE":"아이디이",
+  "IoC":"제어의 역흐름","DI":"디아이","API":"에이피아이","UI":"유아이","UX":"유엑스",
+  "GUI":"지유아이","CLI":"시엘아이","NUI":"엔유아이","OUI":"오유아이","HCI":"에이치시아이",
+  "SOLID":"솔리드","OCP":"오시피","LSP":"엘에스피","SRP":"에스알피","DIP":"디아이피",
+  "GoF":"고에프","DFD":"디에프디","HIPO":"하이포","CASE":"케이스","RAD":"래드",
+  "CMMI":"시엠엠아이","SPICE":"스파이스","ISO":"아이에스오","IEEE":"아이 트리플 이",
+  "TTAS":"티티에이에스","TTAK":"티티에이케이","LOC":"엘오시","CPM":"시피엠","PERT":"퍼트",
+  "WBS":"더블유비에스","SDLC":"에스디엘시","XP":"엑스피","CBD":"시비디",
+  "AES":"에이이에스","DES":"디이에스","3DES":"트리플 디이에스","RSA":"알에스에이",
+  "SEED":"시드","ARIA":"아리아","LEA":"엘이에이","HIGHT":"하이트","MD5":"엠디 파이브",
+  "SHA":"에스에이치에이","RC4":"알시 포","PKI":"피케이아이","VPN":"브이피엔",
+  "IPSec":"아이피섹","SSL":"에스에스엘","TLS":"티엘에스","SSH":"에스에스에이치",
+  "IDS":"아이디에스","IPS":"아이피에스","DDoS":"디도스","DoS":"도스","DRDoS":"디알도스",
+  "SSO":"에스에스오","OTP":"오티피","MFA":"엠에프에이","SAML":"사믈","OAuth":"오어스",
+  "RBAC":"알백","DAC":"디에이시","MAC":"맥","TOCTOU":"톡투","APT":"에이피티",
+  "SDN":"에스디엔","NFV":"엔에프브이","SDDC":"에스디디시","VDI":"브이디아이",
+  "MQTT":"엠큐티티","QKD":"큐케이디","IoT":"아이오티","RFID":"알에프아이디","USN":"유에스엔",
+  "RAID":"레이드","DAS":"다스","NAS":"나스","SAN":"샌","HSM":"에이치에스엠","TPM":"티피엠",
+  "RTO":"알티오","RPO":"알피오","MTBF":"엠티비에프","MTTR":"엠티티알","SPOF":"에스포프",
+  "SVN":"에스브이엔","DRM":"디알엠","CI":"시아이","CD":"시디","STAF":"스타프",
+  "NTAF":"엔티에이에프","xUnit":"엑스유닛","JUnit":"제이유닛","APM":"에이피엠",
+  "P2P":"피투피","N-Screen":"엔 스크린","4D":"사디","3D":"삼디","5G":"오지",
+  "DB":"디비","DW":"디더블유","OS":"오에스","IP":"아이피","AI":"에이아이","V(G)":"브이지",
+  "1NF":"제1정규형","2NF":"제2정규형","3NF":"제3정규형","4NF":"제4정규형","5NF":"제5정규형"
+};
+const ABBR_KEYS = Object.keys(ABBR).sort((a,b) => b.length - a.length);
+const esc4re = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const ABBR_RE = new RegExp("(?<![A-Za-z0-9가-힣])(" + ABBR_KEYS.map(esc4re).join("|") + ")(?![A-Za-z0-9])", "g");
 
 /* 낭독용 텍스트 정리 — 화면용 기호는 귀에 들리지 않으므로 말로 바꿉니다. */
 function sayText(s){
-  return String(s)
-    .replace(/\n+/g, ". ")
-    .replace(/[①②③④]/g, m => "①②③④".indexOf(m) + 1 + "번 ")
-    .replace(/·/g, ", ").replace(/[~∼]/g, " 에서 ")
-    .replace(/[\[\]()]/g, " ").replace(/\s{2,}/g, " ")
-    .trim();
+  let t = String(s);
+  t = t.replace(/V\(G\)/g, "브이지");
+  // 한글 뒤 괄호 안이 영문뿐이면 통째로 뺍니다. "공동 코드 소유(Collective Ownership)" → "공동 코드 소유"
+  t = t.replace(/\(([^()]*)\)/g, (m, inner) =>
+        /^[A-Za-z0-9 .,'’\/&+\-_]+$/.test(inner) ? "" : " " + inner + " ");
+  t = t.replace(/[→⇒]/g, " 다음 ").replace(/↔/g, " 그리고 ");
+  t = t.replace(/&/g, " 앤 ").replace(/×/g, " 곱하기 ").replace(/÷/g, " 나누기 ");
+  t = t.replace(/[①②③④]/g, m => " " + ("①②③④".indexOf(m) + 1) + "번 ");
+  t = t.replace(/\n+/g, ". ");
+  t = t.replace(ABBR_RE, m => ABBR[m] || m);
+  t = t.replace(/·/g, ", ").replace(/[~∼]/g, " 에서 ");
+  t = t.replace(/[\[\]"']/g, " ").replace(/\s{2,}/g, " ").replace(/\s+([.,])/g, "$1");
+  return t.trim();
 }
 
-/* 한국어 음성을 고릅니다. 기기에 없으면 기본 음성으로 읽습니다. */
+function koVoices(){ return TTS ? (TTS.getVoices() || []).filter(v => (v.lang||"").toLowerCase().startsWith("ko")) : []; }
+/* 기기에 설치된 한국어 음성 중 가장 자연스러운 것을 고릅니다.
+   Google · Siri 계열 > 그 외 순으로 우선합니다. */
 function pickVoice(){
-  if (!TTS) return null;
-  const vs = TTS.getVoices() || [];
-  return vs.find(v => v.lang === "ko-KR" && /Yuna|유나|Google|Microsoft/i.test(v.name))
-      || vs.find(v => (v.lang||"").toLowerCase().startsWith("ko")) || null;
+  const saved = (DB.pref && DB.pref.voice) || "";
+  const vs = koVoices();
+  if (!vs.length) return null;
+  return vs.find(v => v.name === saved)
+      || vs.find(v => /Google/i.test(v.name))
+      || vs.find(v => /Siri|Yuna|유나|Sora|Nara/i.test(v.name))
+      || vs[0];
 }
-if (TTS) TTS.addEventListener?.("voiceschanged", () => { LS.voice = pickVoice(); });
+if (TTS && TTS.addEventListener) TTS.addEventListener("voiceschanged", () => {
+  LS.voice = pickVoice(); if (view === "listen") paintVoices();
+});
 
-/* 긴 문장은 잘려 나가는 브라우저가 있어 문장 단위로 쪼개 읽습니다. */
+/* 긴 문장은 중간에 잘리는 브라우저가 있어 문장 단위로 쪼개 읽습니다. */
 function chunk(text, max = 170){
-  const out = [], parts = text.split(/(?<=[.?!])\s+/);
-  let buf = "";
-  parts.forEach(p => {
-    while (p.length > max){ if (buf){ out.push(buf); buf = ""; } out.push(p.slice(0, max)); p = p.slice(max); }
+  const out = []; let buf = "";
+  String(text).split(/(?<=[.?!])\s+/).forEach(p => {
+    while (p.length > max){ if (buf){ out.push(buf.trim()); buf = ""; } out.push(p.slice(0, max)); p = p.slice(max); }
     if ((buf + " " + p).trim().length > max){ out.push(buf.trim()); buf = p; } else buf += " " + p;
   });
   if (buf.trim()) out.push(buf.trim());
   return out.filter(Boolean);
 }
 
-/* 한 문항을 읽을 순서를 만듭니다. after는 그 뒤에 쉬는 시간(초). */
+/* 한 문항의 낭독 순서. t가 함수면 그 시점에 문장을 만듭니다(정답 확인처럼 결과에 따라 달라지는 것). */
 function buildSteps(q, n, total){
   const st = [];
-  st.push({ t: `${n}번 문제. ${total}문항 중 ${n}번째.`, after: 0.4 });
-  st.push({ t: sayText(q.q), after: 0.5 });
-  q.c.forEach((c, i) => st.push({ t: `${i+1}번, ${sayText(c)}`, after: 0.35 }));
-  st.push({ t: "정답을 생각해 보세요.", after: LS.gap, think: true });
-  st.push({ t: `정답은 ${q.a + 1}번, ${sayText(q.c[q.a])}.`, after: 0.6, answer: true });
-  st.push({ t: `해설. ${sayText(q.e)}`, after: 1.2 });
+  st.push({ t: `${n}번 문제.`, after: 0.35 });
+  st.push({ t: sayText(q.q), after: 0.45 });
+  q.c.forEach((c, i) => st.push({ t: `${i+1}번, ${sayText(c)}`, after: 0.3 }));
+  if (LS.talk){
+    st.push({ t: "정답을 말씀해 주세요.", after: 0.15, ask: true });
+    st.push({ t: () => judgeLine(q), after: 0.5, answer: true });
+  } else {
+    st.push({ t: "정답을 생각해 보세요.", after: LS.gap, think: true });
+    st.push({ t: `정답은 ${q.a + 1}번, ${sayText(q.c[q.a])}.`, after: 0.5, answer: true });
+  }
+  st.push({ t: `해설. ${sayText(q.e)}`, after: 1.0 });
   return st;
 }
 
-function listenStart(mode){
+/* 말한 내용을 채점하고, 읽어 줄 문장을 만듭니다. 동시에 학습 기록에 반영합니다. */
+function judgeLine(q){
+  const ans = q.a + 1;
+  if (LS.said === "unsure"){
+    LS.unsure++; applySRS(q, false, "unsure"); save();
+    return `모르겠다고 하셨습니다. 정답은 ${ans}번, ${sayText(q.c[q.a])}.`;
+  }
+  if (!LS.said){
+    LS.unsure++; applySRS(q, false, "unsure"); save();
+    return `답을 듣지 못했습니다. 정답은 ${ans}번, ${sayText(q.c[q.a])}.`;
+  }
+  const ok = LS.said === ans;
+  if (ok){ LS.right++; applySRS(q, true); } else { LS.wrong++; applySRS(q, false); }
+  save();
+  return ok ? `${LS.said}번, 정답입니다.`
+            : `${LS.said}번이라고 하셨습니다. 정답은 ${ans}번, ${sayText(q.c[q.a])}.`;
+}
+
+function listenStart(mode, talk){
   if (!TTS){ alert("이 브라우저는 음성 읽기를 지원하지 않습니다. Chrome 또는 Safari에서 열어 주세요."); return; }
+  if (talk && !SRec){ alert("이 브라우저는 음성 인식을 지원하지 않습니다. Chrome 또는 Safari에서 열어 주세요."); return; }
+  LS.talk = !!talk;
   let pool = [];
   if (mode === "review") pool = shuffle(dueList());
   else if (mode === "weak") pool = weakList();
@@ -448,7 +541,9 @@ function listenStart(mode){
   const limit = (mode === "review" || mode === "weak") ? pool.length : pickCount;
   LS.queue = pool.slice(0, limit);
   if (!LS.queue.length){ alert("읽을 문항이 없습니다. 과목이나 범위를 바꿔 보세요."); return; }
-  LS.i = 0; LS.step = 0; LS.voice = LS.voice || pickVoice();
+  Object.assign(LS, { i:0, step:0, right:0, wrong:0, unsure:0, done:false, said:null, heard:"", startedAt:Date.now() });
+  if (DB.pref){ LS.rate = DB.pref.rate || LS.rate; LS.gap = DB.pref.gap || LS.gap; }
+  LS.voice = pickVoice();
   LS.steps = buildSteps(LS.queue[0], 1, LS.queue.length);
   view = "listen"; render();
   listenPlay();
@@ -462,7 +557,7 @@ async function keepScreenOn(on){
 }
 
 function listenPlay(){
-  if (!TTS || LS.playing) return;
+  if (!TTS || LS.playing || LS.done) return;
   LS.playing = true;
   keepScreenOn(true);
   // 일부 브라우저가 15초쯤에서 낭독을 멈추는 문제를 우회합니다.
@@ -475,11 +570,11 @@ function listenPlay(){
 function listenPause(){
   LS.playing = false;
   clearTimeout(LS.timer); clearInterval(LS.keepAlive);
+  stopMic();
   try { TTS.cancel(); } catch(e){}
   keepScreenOn(false);
   paintListen();
 }
-
 function listenToggle(){ LS.playing ? listenPause() : listenPlay(); }
 
 function speakStep(){
@@ -487,81 +582,204 @@ function speakStep(){
   const s = LS.steps[LS.step];
   if (!s){ listenNext(true); return; }
   paintListen();
-  const parts = chunk(s.t);
+  const text = typeof s.t === "function" ? s.t() : s.t;
+  const parts = chunk(text);
   let k = 0;
   const speakPart = () => {
     if (!LS.playing) return;
     if (k >= parts.length){
+      if (s.ask){ LS.timer = setTimeout(startMic, 250); return; }   // 다 읽은 뒤 마이크를 켭니다
       LS.timer = setTimeout(() => { if (!LS.playing) return; LS.step++; speakStep(); }, (s.after || 0) * 1000);
       return;
     }
     const u = new SpeechSynthesisUtterance(parts[k++]);
     u.lang = "ko-KR"; u.rate = LS.rate; u.pitch = 1;
     if (LS.voice) u.voice = LS.voice;
-    u.onend = speakPart;
-    u.onerror = speakPart;
+    u.onend = speakPart; u.onerror = speakPart;
     TTS.speak(u);
   };
   speakPart();
 }
 
+/* ── 마이크 (음성 인식) ── */
+const NUM_PAT = [
+  [1, /(^|[^0-9])1([^0-9]|$)|일번|１|하나|한번째|첫번째|첫째|^일$/],
+  [2, /(^|[^0-9])2([^0-9]|$)|이번|２|둘|두번째|둘째|^이$/],
+  [3, /(^|[^0-9])3([^0-9]|$)|삼번|３|셋|세번째|셋째|^삼$/],
+  [4, /(^|[^0-9])4([^0-9]|$)|사번|４|넷|네번째|넷째|^사$/]
+];
+function parseSaid(raw){
+  const t = String(raw).replace(/\s+/g, "");
+  if (/모르|몰라|패스|넘겨|글쎄/.test(t)) return "unsure";
+  if (/그만|정지|중지|멈춰/.test(t)) return "stop";
+  if (/다시|한번더/.test(t)) return "again";
+  if (/다음/.test(t)) return "next";
+  for (const [n, re] of NUM_PAT) if (re.test(t)) return n;
+  return null;
+}
+
+function stopMic(){
+  LS.listening = false;
+  clearTimeout(LS.micTimer);
+  if (LS.rec){ try { LS.rec.onend = null; LS.rec.abort(); } catch(e){} LS.rec = null; }
+}
+
+function startMic(){
+  if (!LS.playing || !SRec){ LS.said = null; LS.step++; speakStep(); return; }
+  stopMic();
+  LS.said = null; LS.heard = ""; LS.listening = true; paintListen();
+  const r = new SRec();
+  LS.rec = r;
+  r.lang = "ko-KR"; r.interimResults = false; r.maxAlternatives = 4; r.continuous = false;
+  let settled = false;
+  const finish = (val, heard) => {
+    if (settled) return; settled = true;
+    clearTimeout(LS.micTimer);
+    LS.listening = false; LS.heard = heard || ""; LS.said = val;
+    try { r.onend = null; r.stop(); } catch(e){}
+    LS.rec = null;
+    if (val === "stop"){ listenPause(); return; }
+    if (val === "next"){ listenNext(); return; }
+    if (val === "again"){ listenAgain(); return; }
+    if (val === null && LS.tries < 1){   // 한 번은 다시 물어봅니다
+      LS.tries++;
+      const u = new SpeechSynthesisUtterance("다시 한 번, 번호를 말씀해 주세요.");
+      u.lang = "ko-KR"; u.rate = LS.rate; if (LS.voice) u.voice = LS.voice;
+      u.onend = () => setTimeout(startMic, 200); u.onerror = u.onend;
+      TTS.speak(u); return;
+    }
+    LS.tries = 0;
+    LS.step++; speakStep();
+  };
+  r.onresult = e => {
+    let val = null, heard = "";
+    for (let i = 0; i < e.results[0].length && val === null; i++){
+      heard = e.results[0][i].transcript;
+      val = parseSaid(heard);
+    }
+    finish(val, heard);
+  };
+  r.onerror = e => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed"){
+      LS.micDenied = true; LS.talk = false;
+      finish(null, "");
+      return;
+    }
+    finish(null, "");
+  };
+  r.onend = () => { if (!settled) finish(null, ""); };
+  try { r.start(); } catch(e){ finish(null, ""); }
+  LS.micTimer = setTimeout(() => finish(null, ""), 9000);   // 9초 안에 말이 없으면 넘어갑니다
+}
+
 function listenNext(auto){
-  clearTimeout(LS.timer);
+  clearTimeout(LS.timer); stopMic();
   try { TTS.cancel(); } catch(e){}
-  if (LS.i + 1 >= LS.queue.length){
-    LS.playing = false; clearInterval(LS.keepAlive); keepScreenOn(false);
-    LS.done = true; paintListen();
-    const u = new SpeechSynthesisUtterance(`${LS.queue.length}문항을 모두 들었습니다. 수고하셨습니다.`);
-    u.lang = "ko-KR"; u.rate = LS.rate; if (LS.voice) u.voice = LS.voice; TTS.speak(u);
-    return;
-  }
-  LS.i++; LS.step = 0;
+  LS.tries = 0;
+  if (LS.i + 1 >= LS.queue.length){ listenFinish(); return; }
+  LS.i++; LS.step = 0; LS.said = null; LS.heard = "";
   LS.steps = buildSteps(LS.queue[LS.i], LS.i + 1, LS.queue.length);
   if (!auto && !LS.playing){ paintListen(); return; }
   LS.playing = true; speakStep();
 }
 
 function listenPrev(){
-  clearTimeout(LS.timer);
+  clearTimeout(LS.timer); stopMic();
   try { TTS.cancel(); } catch(e){}
-  LS.i = Math.max(0, LS.i - 1); LS.step = 0; LS.done = false;
+  LS.i = Math.max(0, LS.i - 1); LS.step = 0; LS.done = false; LS.said = null; LS.tries = 0;
   LS.steps = buildSteps(LS.queue[LS.i], LS.i + 1, LS.queue.length);
   if (LS.playing) speakStep(); else paintListen();
 }
 
 function listenAgain(){
-  clearTimeout(LS.timer);
+  clearTimeout(LS.timer); stopMic();
   try { TTS.cancel(); } catch(e){}
-  LS.step = 0; LS.done = false;
+  LS.step = 0; LS.done = false; LS.said = null; LS.tries = 0;
   if (LS.playing) speakStep(); else paintListen();
 }
 
-function listenExit(){
-  listenPause(); LS.done = false; view = "home"; render();
+function listenFinish(){
+  LS.playing = false; LS.done = true;
+  clearInterval(LS.keepAlive); stopMic(); keepScreenOn(false);
+  let line = `${LS.queue.length}문항을 모두 들었습니다.`;
+  if (LS.talk){
+    const solved = LS.right + LS.wrong + LS.unsure;
+    const pct = solved ? Math.round(LS.right / solved * 100) : 0;
+    line += ` 맞힌 문항 ${LS.right}개, 틀린 문항 ${LS.wrong}개, 모르겠음 ${LS.unsure}개. 정답률 ${pct}퍼센트입니다.`;
+    const k = todayKey();
+    const d = DB.days[k] || (DB.days[k] = { solved:0, correct:0, solid:0, sec:0 });
+    if (d.solid === undefined) d.solid = 0;
+    d.solved += solved; d.correct += LS.right; d.solid += LS.right;
+    d.sec += Math.floor((Date.now() - LS.startedAt) / 1000);
+    DB.sessions.unshift({ date:k, mode:"듣고 말하기", total:solved, correct:LS.right, solid:LS.right });
+    DB.sessions = DB.sessions.slice(0, 40);
+    save();
+  }
+  line += " 수고하셨습니다.";
+  paintListen();
+  const u = new SpeechSynthesisUtterance(line);
+  u.lang = "ko-KR"; u.rate = LS.rate; if (LS.voice) u.voice = LS.voice;
+  try { TTS.speak(u); } catch(e){}
 }
 
-function setRate(r){ LS.rate = r; if (LS.playing){ try{TTS.cancel();}catch(e){} speakStep(); } else paintListen(); }
-function setGap(g){ LS.gap = g; LS.steps = buildSteps(LS.queue[LS.i], LS.i + 1, LS.queue.length); paintListen(); }
+function listenExit(){ listenPause(); LS.done = false; view = "home"; render(); }
 
-/* 화면 전체를 다시 그리면 낭독이 끊기므로, 듣기 화면은 필요한 부분만 갱신합니다. */
+function prefSet(k, v){ DB.pref = DB.pref || {}; DB.pref[k] = v; save(); }
+function setRate(r){ LS.rate = r; prefSet("rate", r); if (LS.playing){ try{TTS.cancel();}catch(e){} speakStep(); } else paintListen(); }
+function setGap(g){ LS.gap = g; prefSet("gap", g); LS.steps = buildSteps(LS.queue[LS.i], LS.i+1, LS.queue.length); paintListen(); }
+function setVoice(name){
+  const v = koVoices().find(x => x.name === name);
+  LS.voice = v || LS.voice; prefSet("voice", name);
+  paintVoices();
+  const u = new SpeechSynthesisUtterance("안녕하세요. 이 음성으로 문제를 읽어 드립니다.");
+  u.lang = "ko-KR"; u.rate = LS.rate; if (LS.voice) u.voice = LS.voice;
+  try { TTS.cancel(); TTS.speak(u); } catch(e){}
+}
+function setTalk(on){
+  if (on && !SRec){ alert("이 브라우저는 음성 인식을 지원하지 않습니다."); return; }
+  LS.talk = on; stopMic();
+  LS.step = 0; LS.said = null; LS.tries = 0;
+  LS.steps = buildSteps(LS.queue[LS.i], LS.i+1, LS.queue.length);
+  if (LS.playing){ try{TTS.cancel();}catch(e){} speakStep(); } else render();
+}
+
+/* 화면 전체를 다시 그리면 낭독이 끊기므로 필요한 부분만 갱신합니다. */
 function paintListen(){
   if (view !== "listen") return;
   const el = document.getElementById("lsbody");
   if (el) el.innerHTML = listenBody();
 }
+function paintVoices(){
+  if (view !== "listen") return;
+  const el = document.getElementById("lsvoices");
+  if (el) el.innerHTML = voiceChips();
+}
+function voiceChips(){
+  const vs = koVoices();
+  if (!vs.length) return `<div class="note" style="margin:0">기기에 한국어 음성이 없어 기본 음성으로 읽습니다.</div>`;
+  const cur = LS.voice && LS.voice.name;
+  return vs.map(v => `<button class="chip ${cur===v.name?"on":""}" onclick="setVoice(${JSON.stringify(v.name).replace(/"/g,"&quot;")})">${esc(v.name)}</button>`).join("");
+}
 
 function listenBody(){
   const q = LS.queue[LS.i], s = LS.steps[LS.step] || {};
-  const phase = LS.done ? "완료" : !LS.playing ? "일시정지"
-    : s.think ? "생각할 시간" : s.answer ? "정답" : LS.step === 0 ? "시작" : LS.step === 1 ? "문제" : LS.step <= 5 ? "보기" : "해설";
+  const phase = LS.done ? "완료"
+    : LS.listening ? "듣고 있습니다 — 번호를 말하세요"
+    : !LS.playing ? "일시정지"
+    : s.think ? "생각할 시간" : s.ask ? "답할 차례" : s.answer ? "정답"
+    : LS.step === 0 ? "시작" : LS.step === 1 ? "문제" : LS.step <= 5 ? "보기" : "해설";
   const pct = Math.round((LS.i + 1) / LS.queue.length * 100);
+  const score = LS.talk && (LS.right + LS.wrong + LS.unsure)
+    ? `<div class="lsscore">맞힘 ${LS.right} · 틀림 ${LS.wrong} · 모름 ${LS.unsure}</div>` : "";
   return `
-    <div class="lsphase">${phase}</div>
+    <div class="lsphase ${LS.listening?"mic":""}">${phase}</div>
     <div class="lspos">${LS.i + 1} / ${LS.queue.length}</div>
+    ${score}
     <div class="progress" style="margin:14px 0 18px"><i style="width:${pct}%"></i></div>
-    <button class="lsbig ${LS.playing?"on":""}" onclick="listenToggle()" aria-label="${LS.playing?"일시정지":"재생"}">
-      ${LS.done ? "■" : LS.playing ? "❚❚" : "▶"}
+    <button class="lsbig ${LS.listening?"mic":LS.playing?"on":""}" onclick="listenToggle()" aria-label="${LS.playing?"일시정지":"재생"}">
+      ${LS.done ? "■" : LS.listening ? "🎙" : LS.playing ? "❚❚" : "▶"}
     </button>
+    ${LS.heard ? `<div class="lsheard">들린 말: “${esc(LS.heard)}”</div>` : ""}
     <div class="lsrow">
       <button class="btn btn-ghost lsbtn" onclick="listenPrev()">◀ 이전</button>
       <button class="btn btn-ghost lsbtn" onclick="listenAgain()">↻ 다시</button>
@@ -576,17 +794,38 @@ function viewListen(){
   const gaps = [3, 5, 8, 12];
   return `<div class="row spread">
       <button class="btn btn-ghost" onclick="listenExit()">← 나가기</button>
-      <div class="timer">🎧 듣기 모드</div>
-      <span class="timer">기록 미반영</span>
+      <div class="timer">${LS.talk ? "🎙 듣고 말하기" : "🎧 듣기"}</div>
+      <span class="timer">${LS.talk ? "기록 반영" : "기록 미반영"}</span>
     </div>
     <div class="card lscard"><div id="lsbody">${listenBody()}</div></div>
 
+    <div class="card"><h2>응답 방식</h2>
+      <div class="chips">
+        <button class="chip ${!LS.talk?"on":""}" onclick="setTalk(false)">🎧 듣기만</button>
+        <button class="chip ${LS.talk?"on":""}" onclick="setTalk(true)" ${SRec?"":"disabled"}>🎙 마이크로 답하기</button>
+      </div>
+      <div class="note">${LS.talk
+        ? `보기를 읽은 뒤 마이크가 켜집니다. <b>"2번"</b>처럼 번호를 말하면 됩니다.
+           <b>"모르겠어"</b>라고 하면 모르겠음으로 처리되어 내일 다시 나옵니다.
+           <b>"다음" · "다시" · "그만"</b>도 말로 조작됩니다. 이 모드는 학습 기록에 반영됩니다.`
+        : `문제와 보기를 읽고 잠시 멈춘 뒤 정답과 해설을 읽습니다. 학습 기록에는 반영되지 않습니다.`}
+        ${SRec ? "" : "<br>이 브라우저는 음성 인식을 지원하지 않아 듣기만 가능합니다. Chrome 또는 Safari를 써 주세요."}
+        ${LS.micDenied ? "<br><b>마이크 권한이 거부되어 듣기 전용으로 전환했습니다.</b> 주소창의 자물쇠 아이콘에서 마이크를 허용해 주세요." : ""}</div>
+    </div>
+
+    <div class="card"><h2>목소리</h2>
+      <div class="chips" id="lsvoices">${voiceChips()}</div>
+      <div class="note">고르면 바로 미리 들려 드립니다. 이름에 <b>Google</b>이나 <b>Siri</b>가 들어간 음성이 대체로 가장 자연스럽습니다.
+      목록이 빈약하다면 기기에서 고품질 음성을 내려받아야 합니다 —
+      macOS·iOS는 <b>설정 → 손쉬운 사용 → 말하기(음성 콘텐츠) → 시스템 음성 → 한국어</b>에서 '유나(고급)' 등을 추가할 수 있습니다.</div>
+    </div>
+
     <div class="card"><h2>재생 설정</h2>
       <div class="chips">${rates.map(r=>`<button class="chip ${LS.rate===r?"on":""}" onclick="setRate(${r})">속도 ${r}배</button>`).join("")}</div>
-      <div class="chips" style="margin-top:10px">${gaps.map(g=>`<button class="chip ${LS.gap===g?"on":""}" onclick="setGap(${g})">생각할 시간 ${g}초</button>`).join("")}</div>
+      ${LS.talk ? "" : `<div class="chips" style="margin-top:10px">${gaps.map(g=>`<button class="chip ${LS.gap===g?"on":""}" onclick="setGap(${g})">생각할 시간 ${g}초</button>`).join("")}</div>`}
       <div class="note">키보드로도 조작됩니다 — <b>스페이스</b> 재생·정지, <b>→</b> 다음, <b>←</b> 이전, <b>R</b> 다시.
       ${LS.skipped ? `코드·표·트리가 들어간 ${LS.skipped}문항은 귀로 들을 수 없어 제외했습니다.` : ""}
-      iPhone·iPad는 화면을 잠그면 재생이 멈춥니다. 화면을 켠 채로 두시거나 잠금 시간을 늘려 주세요.</div>
+      iPhone·iPad는 화면을 잠그면 재생이 멈춥니다. 화면을 켠 채로 두시거나 자동 잠금 시간을 늘려 주세요.</div>
     </div>`;
 }
 
@@ -597,7 +836,6 @@ document.addEventListener("keydown", e => {
   else if (e.key === "ArrowLeft") listenPrev();
   else if (e.key.toLowerCase() === "r") listenAgain();
 });
-
 /* ═══════════════ 뷰 ═══════════════ */
 function render(){
   const app = document.getElementById("app");
@@ -669,23 +907,30 @@ function viewHome(){
     </div>
   </div>
 
-  <div class="card"><h2>눈 감고 듣기</h2>
+  <div class="card"><h2>눈 감고 학습</h2>
     <div class="modes">
-      <button class="mode" onclick="listenStart('study')">
-        <div class="mt"><i class="dot d-teal"></i>🎧 과목 듣기</div>
-        <div class="md">아래에서 고른 과목 · 문항 수</div></button>
-      <button class="mode" onclick="listenStart('freq')">
-        <div class="mt"><i class="dot d-amber"></i>🎧 고빈도 듣기</div>
+      <button class="mode" onclick="listenStart('study', false)">
+        <div class="mt"><i class="dot d-teal"></i>🎧 듣기만 · 과목</div>
+        <div class="md">아래에서 고른 과목 · 기록 미반영</div></button>
+      <button class="mode" onclick="listenStart('study', true)">
+        <div class="mt"><i class="dot d-blue"></i>🎙 듣고 말하기 · 과목</div>
+        <div class="md">마이크로 번호를 답함 · 기록 반영</div></button>
+      <button class="mode" onclick="listenStart('freq', false)">
+        <div class="mt"><i class="dot d-amber"></i>🎧 듣기만 · 고빈도</div>
         <div class="md">출제 빈도 A등급만</div></button>
-      <button class="mode" onclick="listenStart('review')" ${due?"":"disabled"}>
-        <div class="mt"><i class="dot d-teal"></i>🎧 복습 듣기</div>
+      <button class="mode" onclick="listenStart('freq', true)">
+        <div class="mt"><i class="dot d-amber"></i>🎙 듣고 말하기 · 고빈도</div>
+        <div class="md">출제 빈도 A등급만</div></button>
+      <button class="mode" onclick="listenStart('review', true)" ${due?"":"disabled"}>
+        <div class="mt"><i class="dot d-teal"></i>🎙 듣고 말하기 · 복습</div>
         <div class="md">${due ? due + "문항" : "오늘 복습할 문항 없음"}</div></button>
-      <button class="mode" onclick="listenStart('weak')" ${weak?"":"disabled"}>
-        <div class="mt"><i class="dot d-mag"></i>🎧 약점 듣기</div>
+      <button class="mode" onclick="listenStart('weak', true)" ${weak?"":"disabled"}>
+        <div class="mt"><i class="dot d-mag"></i>🎙 듣고 말하기 · 약점</div>
         <div class="md">${weak ? "틀렸거나 찍은 " + Math.min(weak,30) + "문항" : "아직 약점 없음"}</div></button>
     </div>
-    <div class="note">문제와 보기를 읽어 준 뒤 잠시 멈추고, 정답과 해설을 읽습니다.
-    화면을 보지 않아도 되며 <b>학습 기록에는 반영되지 않습니다.</b>
+    <div class="note"><b>듣기만</b>은 문제와 보기를 읽고 잠시 멈춘 뒤 정답과 해설을 읽습니다. 학습 기록은 건드리지 않습니다.
+    <b>듣고 말하기</b>는 보기를 읽은 뒤 마이크가 켜져, "2번"처럼 말하면 채점하고 학습 기록에 반영합니다.
+    시작한 뒤에도 화면에서 두 방식을 바로 바꿀 수 있습니다.
     코드·표·트리가 들어간 문항은 귀로 들어서는 알 수 없으므로 자동으로 제외됩니다.</div>
   </div>
 
