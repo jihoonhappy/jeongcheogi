@@ -55,12 +55,42 @@ PITCH_PRESETS = [
     ("ko-KR-SunHiNeural@-8Hz@-8%", "여성 · 낮고 느리게"),
 ]
 
+_PITCH_RE = re.compile(r"^[+-]?\d+(Hz|st)$", re.I)
+_RATE_RE = re.compile(r"^[+-]?\d+(%|pct)$", re.I)
+
 def parse_voice(spec):
-    """'이름@높낮이@빠르기' 를 (이름, 높낮이, 빠르기) 로 나눕니다."""
-    parts = [x.strip() for x in str(spec).split("@")]
+    """'이름@높낮이@빠르기' 를 (이름, 높낮이, 빠르기) 로 나눕니다.
+       샘플 파일명에 쓰인 밑줄 표기(ko-KR-SunHiNeural_-15Hz)도 그대로 받습니다."""
+    txt = str(spec).strip()
+    if txt.lower().startswith("샘플_") or txt.lower().startswith("sample_"):
+        txt = txt.split("_", 1)[1]
+    if txt.lower().endswith(".mp3"):
+        txt = txt[:-4]
+    if "@" not in txt and "_" in txt:
+        # ko-KR-SunHiNeural_-15Hz / ..._p15Hz / ..._-8Hz_-8pct
+        head, *tail = txt.split("_")
+        conv = []
+        for t in tail:
+            t2 = t.replace("pct", "%")
+            if t2.startswith("p") and _PITCH_RE.match(t2[1:]):
+                t2 = "+" + t2[1:]
+            if _PITCH_RE.match(t2) or _RATE_RE.match(t2):
+                conv.append(t2)
+            else:
+                conv = None
+                break
+        if conv:
+            txt = "@".join([head] + conv)
+    parts = [x.strip() for x in txt.split("@")]
     name = parts[0]
-    pitch = parts[1] if len(parts) > 1 and parts[1] else None
-    rate = parts[2] if len(parts) > 2 and parts[2] else None
+    pitch, rate = None, None
+    for x in parts[1:]:
+        if not x:
+            continue
+        if _RATE_RE.match(x.replace("pct", "%")):
+            rate = x.replace("pct", "%")
+        else:
+            pitch = x
     return name, pitch, rate
 
 def voice_label(spec):
@@ -374,7 +404,8 @@ async def build_subject(s, args):
         return
 
     out_dir = os.path.join(OUT_ROOT, "%d과목_%s" % (s, SUBJ[s].replace(" ", "")))
-    tmp_dir = os.path.join(out_dir, ".tmp")
+    # 목소리마다 임시 폴더를 나눕니다. 같이 쓰면 목소리를 바꿔도 옛 조각을 재사용해 버립니다.
+    tmp_dir = os.path.join(out_dir, ".tmp-" + voice_label(args.voice or "default"))
     os.makedirs(tmp_dir, exist_ok=True)
 
     sil_cache = {}
@@ -384,8 +415,13 @@ async def build_subject(s, args):
             sil_cache[key] = make_silence(os.path.join(tmp_dir, "_sil_%s.mp3" % str(key).replace(".", "_")), key)
         return sil_cache[key]
 
+    nm, pt, rt = parse_voice(args.voice or "")
     print("  %d과목 %s — %d문항 (코드·표 %d문항 제외), %d문항씩 묶음"
           % (s, SUBJ[s], len(bank), skipped, args.group))
+    print("    목소리 %s%s%s"
+          % (nm or "기본",
+             (" · 높낮이 %s" % pt) if pt else "",
+             (" · 빠르기 %s" % rt) if rt else ""))
 
     sem = asyncio.Semaphore(args.jobs)
 
@@ -529,8 +565,11 @@ async def make_samples(args):
     print("\n샘플 %d개를 만들었습니다:" % len(outs))
     for o in outs:
         print("  " + o)
-    print("\n들어 보시고 마음에 드는 것으로 만드세요:")
-    print("  python3 tools/make_audio.py --subject %d --voice <목소리이름>" % sub)
+    print("\n들어 보시고, 마음에 드는 것의 명령을 그대로 복사해 쓰세요:")
+    for v in cands:
+        if not any(voice_label(v) in os.path.basename(o) for o in outs):
+            continue
+        print("  python3 tools/make_audio.py --subjects 2,3,4,5 --voice %s" % v)
 
 def mac_korean_voices():
     try:
@@ -569,6 +608,7 @@ async def list_voices(args):
 def main():
     ap = argparse.ArgumentParser(description="정보처리기사 필기 듣기용 MP3 생성기")
     ap.add_argument("--subject", type=int, choices=[1, 2, 3, 4, 5], help="만들 과목")
+    ap.add_argument("--subjects", default=None, help="여러 과목 (예: 2,3,4,5)")
     ap.add_argument("--all", action="store_true", help="5과목 전부")
     ap.add_argument("--sample", action="store_true", help="목소리별 맛보기만 만들기")
     ap.add_argument("--list-voices", action="store_true", help="쓸 수 있는 목소리 보기")
@@ -587,6 +627,8 @@ def main():
     ap.add_argument("--group", type=int, default=10, help="한 파일에 담을 문항 수. 기본 10")
     ap.add_argument("--jobs", type=int, default=4, help="동시 합성 수. 기본 4")
     ap.add_argument("--force", action="store_true", help="이미 만든 파일도 다시 만들기")
+    ap.add_argument("--clean-samples", action="store_true",
+                    help="맛보기 파일만 지웁니다 (과목 폴더는 건드리지 않습니다)")
     ap.add_argument("--keep-tmp", action="store_true", help="중간 파일 남기기")
     args = ap.parse_args()
 
@@ -617,16 +659,41 @@ def main():
 
     init_abbr()
 
+    if args.clean_samples:
+        n = 0
+        if os.path.isdir(OUT_ROOT):
+            for f in os.listdir(OUT_ROOT):
+                if f.startswith("샘플_") and f.endswith(".mp3"):
+                    os.remove(os.path.join(OUT_ROOT, f)); n += 1
+        print("맛보기 %d개를 지웠습니다. 과목 폴더는 그대로입니다." % n)
+        return
+
     if args.list_voices:
         asyncio.run(list_voices(args)); return
     if args.sample:
         print("맛보기 만드는 중 (엔진: %s)" % args.engine)
         asyncio.run(make_samples(args)); return
 
-    subs = [1, 2, 3, 4, 5] if args.all else ([args.subject] if args.subject else [1])
+    if args.subjects:
+        subs = [int(x) for x in re.findall(r"[1-5]", args.subjects)]
+    elif args.all:
+        subs = [1, 2, 3, 4, 5]
+    elif args.subject:
+        subs = [args.subject]
+    else:
+        subs = [1]
     print("음성 엔진: %s / 목소리: %s / 생각할 시간: %.0f초"
           % (args.engine, args.voice or "기본", args.gap))
     os.makedirs(OUT_ROOT, exist_ok=True)
+    done = []
+    for s2 in range(1, 6):
+        d = os.path.join(OUT_ROOT, "%d과목_%s" % (s2, SUBJ[s2].replace(" ", "")))
+        if os.path.isdir(d) and any(f.endswith(".mp3") for f in os.listdir(d)):
+            done.append(s2)
+    if done:
+        print("이미 만들어 둔 과목: %s (그대로 두고 건너뜁니다. 다시 만들려면 --force)"
+              % ", ".join("%d과목" % x for x in done))
+    print()
     for s in subs:
         asyncio.run(build_subject(s, args))
     print("\n끝났습니다. audio/ 폴더를 음악 앱이나 휴대폰으로 옮겨 들으시면 됩니다.")
