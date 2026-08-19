@@ -57,7 +57,7 @@ addQ([
 {id:3042,s:3,t:"관계해석",f:"C",q:"관계 해석(Relational Calculus)에 대한 설명으로 옳은 것은?",c:["원하는 정보가 무엇인지를 기술하는 비절차적 언어","연산 순서를 명시하는 절차적 언어","물리적 저장 구조를 정의하는 언어","권한을 부여하는 언어"],a:0,e:"관계 대수=절차적(How), 관계 해석=비절차적(What). 표현력은 동등합니다."},
 
 /* ── SQL 기본 ── */
-{id:3043,s:3,t:"SQL",f:"A",q:"SQL 명령어 분류가 옳게 짝지어진 것은?",c:["DDL: CREATE, ALTER, DROP","DML: GRANT, REVOKE","DCL: SELECT, INSERT","DDL: COMMIT, ROLLBACK"],a:0,e:"DDL=CREATE/ALTER/DROP, DML=SELECT/INSERT/UPDATE/DELETE, DCL=GRANT/REVOKE/COMMIT/ROLLBACK."},
+{id:3043,s:3,t:"SQL",f:"A",q:"SQL 명령어 분류가 옳게 짝지어진 것은?",c:["DDL: CREATE, ALTER, DROP","DML: GRANT, REVOKE","DCL: SELECT, INSERT","DDL: COMMIT, ROLLBACK"],a:0,e:"DDL=CREATE/ALTER/DROP, DML=SELECT/INSERT/UPDATE/DELETE, DCL=GRANT/REVOKE입니다. COMMIT/ROLLBACK/SAVEPOINT는 표준 SQL에서 TCL(Transaction Control Language)로 분류하나, 교재에 따라 DCL에 포함시켜 설명하기도 합니다."},
 {id:3044,s:3,t:"SQL",f:"A",q:"테이블 구조는 남기고 모든 행만 삭제할 때 사용하는 명령으로 옳은 것은?",c:["DROP TABLE 학생;","DELETE FROM 학생;","ALTER TABLE 학생 DROP;","CREATE TABLE 학생;"],a:1,e:"DELETE는 행만 삭제(구조 유지, 롤백 가능), DROP은 테이블 자체를 제거합니다."},
 {id:3045,s:3,t:"SQL",f:"A",q:"기존 테이블에 새로운 속성을 추가하는 SQL 명령은?",c:["ALTER TABLE 학생 ADD 학년 INT;","UPDATE 학생 SET 학년 = 1;","CREATE TABLE 학생 ADD 학년;","INSERT INTO 학생 ADD 학년;"],a:0,e:"ALTER의 하위 명령: ADD(추가), ALTER(변경), DROP(삭제)."},
 {id:3046,s:3,t:"SQL",f:"A",q:"다음 SQL의 실행 결과로 옳은 것은?\n\nSELECT 학과, COUNT(*) FROM 학생 GROUP BY 학과 HAVING COUNT(*) >= 3;",c:["모든 학과의 학생 수","학생이 3명 이상인 학과와 그 인원수","학생이 3명 미만인 학과","학과별 학생 이름 목록"],a:1,e:"GROUP BY로 그룹화 후 HAVING으로 그룹 조건을 겁니다. WHERE는 그룹화 전 행 조건입니다."},
@@ -65,12 +65,12 @@ addQ([
 {id:3048,s:3,t:"SQL",f:"A",q:"검색 결과에서 중복된 행을 제거하는 키워드는?",c:["DISTINCT","UNIQUE","ONLY","SINGLE"],a:0,e:"SELECT DISTINCT 학과 FROM 학생; 형태로 사용합니다."},
 {id:3049,s:3,t:"SQL",f:"A",q:"다음 SQL의 의미로 옳은 것은?\n\nSELECT * FROM 학생 ORDER BY 성적 DESC, 이름 ASC;",c:["성적 내림차순, 같으면 이름 오름차순 정렬","성적 오름차순, 이름 내림차순 정렬","성적만 내림차순 정렬","이름만 오름차순 정렬"],a:0,e:"ORDER BY는 첫 기준이 같을 때 다음 기준을 적용합니다. 기본값은 ASC입니다."},
 {id:3050,s:3,t:"SQL",f:"B",q:"이름이 '김'으로 시작하는 학생을 검색하는 조건으로 옳은 것은?",c:["WHERE 이름 = '김%'","WHERE 이름 LIKE '김%'","WHERE 이름 IN '김%'","WHERE 이름 BETWEEN '김'"],a:1,e:"LIKE에서 %는 0개 이상의 문자, _는 정확히 한 문자를 의미합니다."},
-{id:3051,s:3,t:"SQL",f:"B",q:"성적이 80 이상 90 이하인 학생을 검색하는 조건으로 옳은 것은?",c:["WHERE 성적 BETWEEN 80 AND 90","WHERE 성적 IN (80, 90)","WHERE 성적 LIKE 80~90","WHERE 성적 >= 80 OR 성적 <= 90"],a:0,e:"BETWEEN은 경계값을 포함합니다. 4번은 OR이라 모든 값이 참이 됩니다."},
+{id:3051,s:3,t:"SQL",f:"B",q:"성적이 80 이상 90 이하인 학생을 검색하는 조건으로 옳은 것은?",c:["WHERE 성적 BETWEEN 80 AND 90","WHERE 성적 IN (80, 90)","WHERE 성적 LIKE 80~90","WHERE 성적 >= 80 OR 성적 <= 90"],a:0,e:"BETWEEN은 경계값(80, 90)을 포함합니다. 4번은 OR이므로 80 미만이든 90 초과든 어느 한쪽 조건에 걸려 사실상 범위 제한이 사라집니다. 다만 성적이 NULL인 행은 두 비교가 모두 UNKNOWN이 되어 결과에서 제외됩니다(3값 논리)."},
 {id:3052,s:3,t:"SQL",f:"B",q:"NULL 값을 가진 행을 검색하는 조건으로 옳은 것은?",c:["WHERE 점수 = NULL","WHERE 점수 IS NULL","WHERE 점수 == NULL","WHERE 점수 LIKE NULL"],a:1,e:"NULL은 비교 연산자로 판단할 수 없으므로 IS NULL / IS NOT NULL을 씁니다."},
 {id:3053,s:3,t:"SQL",f:"B",q:"집계 함수 중 NULL을 제외하지 않고 전체 행 수를 세는 것은?",c:["COUNT(*)","COUNT(속성명)","SUM(속성명)","AVG(속성명)"],a:0,e:"COUNT(*)는 NULL 포함 전체 행, COUNT(컬럼)은 NULL을 제외합니다."},
 {id:3054,s:3,t:"SQL",f:"B",q:"학번이 1001인 학생의 학과를 '전산'으로 수정하는 SQL은?",c:["UPDATE 학생 SET 학과='전산' WHERE 학번=1001;","INSERT INTO 학생 SET 학과='전산';","ALTER 학생 SET 학과='전산';","MODIFY 학생 SET 학과='전산';"],a:0,e:"WHERE를 생략하면 모든 행이 수정되므로 주의해야 합니다."},
 {id:3055,s:3,t:"SQL",f:"B",q:"두 SELECT 결과를 합치되 중복 행을 모두 유지하는 집합 연산자는?",c:["UNION","UNION ALL","INTERSECT","EXCEPT"],a:1,e:"UNION은 중복을 제거하고, UNION ALL은 중복까지 모두 반환합니다."},
-{id:3056,s:3,t:"SQL",f:"C",q:"CASCADE 옵션을 사용한 DROP TABLE의 동작으로 옳은 것은?",c:["참조하는 다른 테이블이 있으면 삭제하지 않는다","참조하는 모든 데이터도 함께 삭제한다","테이블의 데이터만 삭제한다","삭제를 취소한다"],a:1,e:"CASCADE=연쇄 삭제, RESTRICT=참조 중이면 삭제 취소."},
+{id:3056,s:3,t:"SQL",f:"C",q:"CASCADE 옵션을 사용한 DROP TABLE의 동작으로 옳은 것은?",c:["이 테이블을 참조하는 다른 테이블이 있으면 삭제하지 않는다","이 테이블을 참조하는 뷰·제약조건 등 의존 객체까지 함께 제거된다","테이블 구조는 남기고 행만 모두 삭제한다","삭제 대상 테이블의 인덱스만 제거한다"],a:1,e:"DROP TABLE ... CASCADE는 해당 테이블을 참조하는 뷰·외래키 제약조건 등 의존 객체를 함께 제거합니다. 참조하는 테이블의 데이터 행까지 지우는 것은 아닙니다. RESTRICT는 참조 중인 객체가 있으면 삭제를 거부합니다. 참고로 행만 모두 지우는 것은 DELETE 또는 TRUNCATE입니다."},
 
 /* ── JOIN·서브쿼리 ── */
 {id:3057,s:3,t:"JOIN",f:"A",q:"두 테이블에서 조인 조건을 만족하는 행만 반환하는 조인은?",c:["INNER JOIN","LEFT OUTER JOIN","FULL OUTER JOIN","CROSS JOIN"],a:0,e:"INNER JOIN은 교집합, OUTER JOIN은 한쪽에 없는 행도 NULL로 포함합니다."},
