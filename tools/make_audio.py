@@ -717,6 +717,7 @@ def main():
         print("맛보기 만드는 중 (엔진: %s)" % args.engine)
         asyncio.run(make_samples(args)); return
 
+    picked = bool(args.subjects or args.all or args.subject)
     if args.subjects:
         subs = [int(x) for x in re.findall(r"[1-5]", args.subjects)]
     elif args.all:
@@ -725,6 +726,22 @@ def main():
         subs = [args.subject]
     else:
         subs = [1]
+
+    # 과목을 따로 지정하지 않고 --zip / --copy-to 만 주면,
+    # 새로 만들지 않고 이미 만들어 둔 것만 묶거나 복사합니다.
+    if (args.zip or args.copy_to) and not picked:
+        have_subs = [x for x in range(1, 6)
+                     if os.path.isdir(os.path.join(OUT_ROOT, "%d과목_%s" % (x, SUBJ[x].replace(" ", ""))))]
+        if not have_subs:
+            sys.exit("audio/ 에 만들어 둔 과목이 없습니다.")
+        print("이미 만들어 둔 과목만 처리합니다: %s\n"
+              % ", ".join("%d과목" % x for x in have_subs))
+        if args.zip:
+            pack_zip(have_subs)
+        if args.copy_to:
+            copy_out(args.copy_to, have_subs)
+        print("\n끝났습니다.")
+        return
     print("음성 엔진: %s / 목소리: %s / 생각할 시간: %.0f초"
           % (args.engine, args.voice or "기본", args.gap))
     os.makedirs(OUT_ROOT, exist_ok=True)

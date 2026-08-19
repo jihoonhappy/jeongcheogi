@@ -236,6 +236,14 @@ python3 tools/make_audio.py --all --voice ko-KR-SunHiNeural@-15Hz --zip \
   --copy-to ~/Library/Mobile\ Documents/com~apple~CloudDocs/정처기음성
 ```
 
+**이미 만들어 둔 것을 옮기기만 할 때는** 과목을 지정하지 말고 옵션만 주세요.
+새로 만들지 않고 있는 파일만 처리합니다.
+
+```bash
+python3 tools/make_audio.py --zip
+python3 tools/make_audio.py --copy-to ~/Library/Mobile\ Documents/com~apple~CloudDocs/정처기음성
+```
+
 **저장소에 직접 넣는 것은 권장하지 않습니다.** 5과목 전체가 약 210MB 인데,
 GitHub 한도에는 걸리지 않지만 클론이 무거워지고 서비스 워커가 이걸 전부
 오프라인 캐시에 담으려 합니다. 굳이 넣으신다면 `.gitignore` 에서 `audio/` 를 빼고
