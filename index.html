@@ -131,6 +131,27 @@ h1 em{font-style:normal;color:var(--blue)}
 .lsmeta{margin-top:20px;font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--ink3)}
 .lsq{margin-top:8px;font-size:14.5px;line-height:1.6;color:var(--ink2);text-align:left;white-space:pre-wrap}
 
+/* ── MP3 플레이어 ── */
+.apnow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--blue);font-weight:700;text-transform:uppercase}
+.aptitle{font-size:19px;font-weight:700;margin-top:6px;line-height:1.4}
+.apbar{width:100%;margin:16px 0 2px;accent-color:var(--blue)}
+.aptime{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;color:var(--ink3)}
+.aprow{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;flex-wrap:wrap}
+.aprow .lsbig{width:88px;height:88px;border-radius:44px;font-size:28px}
+.apsm{padding:11px 10px;font-size:12.5px;min-width:58px}
+.apsleep{margin-top:14px;font-size:13px;color:var(--amber);font-weight:600}
+.aperr{margin-top:12px;font-size:13px;color:var(--mag)}
+.aplist{max-height:340px;overflow-y:auto;border:1px solid var(--line);border-radius:10px}
+.apgrp{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;color:var(--ink3);
+  padding:9px 12px 5px;background:#F7F9FC;position:sticky;top:0}
+.aptrack{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:none;
+  border:0;border-top:1px solid var(--line);padding:11px 12px;font-size:13.5px;cursor:pointer}
+.aptrack:first-child{border-top:0}
+.aptrack:hover{background:var(--blue-soft)}
+.aptrack.on{background:var(--blue-soft);font-weight:700;color:var(--blue)}
+.aptrack .apn{font-family:var(--mono);font-size:11px;color:var(--ink3);flex:none}
+.aptrack .apd{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink3);flex:none}
+
 /* ── 결과/통계 ── */
 .score{display:flex;align-items:flex-end;gap:12px}
 .score b{font-size:56px;line-height:.95;font-family:var(--mono);letter-spacing:-.03em}
@@ -856,10 +877,212 @@ document.addEventListener("keydown", e => {
   else if (e.key === "ArrowLeft") listenPrev();
   else if (e.key.toLowerCase() === "r") listenAgain();
 });
+
+/* ═══════════════ MP3 플레이어 ═══════════════
+   tools/make_audio.py 로 만든 음성 파일을 앱 안에서 재생합니다.
+   브라우저 내장 음성과 달리 화면을 잠가도 재생이 이어지고, 잠금화면에서 조작됩니다.
+   자면서 듣기 위한 슬립 타이머와 이어듣기를 갖췄습니다. */
+let AP = { list:[], i:-1, el:null, timer:null, endAt:0, base:"", loaded:false, err:"" };
+
+const apBase = () => (DB.pref && DB.pref.audioBase) || "audio/";
+
+/* 트랙 목록(audio-manifest.json)을 읽습니다. make_audio.py --manifest 로 만듭니다. */
+async function apLoad(){
+  AP.err = ""; AP.loaded = false;
+  const cands = ["audio-manifest.json", "audio/manifest.json"];
+  const b = apBase();
+  if (/^https?:/i.test(b)) cands.unshift(b.replace(/\/?$/, "/") + "manifest.json");
+  for (const u of cands){
+    try {
+      const r = await fetch(u, { cache: "no-store" });
+      if (!r.ok) continue;
+      const j = await r.json();
+      if (j && j.tracks && j.tracks.length){
+        AP.list = j.tracks; AP.loaded = true;
+        if (view === "audio") render();
+        return;
+      }
+    } catch(e){}
+  }
+  AP.err = "트랙 목록을 찾지 못했습니다.";
+  if (view === "audio") render();
+}
+
+const apUrl = t => apBase().replace(/\/?$/, "/") + t.file.split("/").map(encodeURIComponent).join("/");
+const apFmt = s => { s = Math.max(0, Math.round(s||0));
+  const m = Math.floor(s/60), x = s%60; return m + ":" + String(x).padStart(2,"0"); };
+
+function apEl(){
+  if (AP.el) return AP.el;
+  const a = new Audio();
+  a.preload = "metadata";
+  a.addEventListener("timeupdate", () => { apSave(); apPaint(); });
+  a.addEventListener("ended", () => apNext());
+  a.addEventListener("play", apPaint);
+  a.addEventListener("pause", apPaint);
+  a.addEventListener("error", () => { AP.err = "이 파일을 재생할 수 없습니다. 경로를 확인해 주세요."; apPaint(); });
+  AP.el = a;
+  return a;
+}
+
+function apPlay(i, seek){
+  const t = AP.list[i];
+  if (!t) return;
+  const a = apEl();
+  if (AP.i !== i){
+    AP.i = i; AP.err = "";
+    a.src = apUrl(t);
+    if (seek) a.currentTime = seek;
+  }
+  a.play().catch(() => { AP.err = "재생이 막혔습니다. 화면을 한 번 누른 뒤 다시 시도해 주세요."; apPaint(); });
+  apMedia(t);
+  apSave(); apPaint();
+}
+function apToggle(){
+  const a = apEl();
+  if (AP.i < 0){ apResume(); return; }
+  a.paused ? a.play().catch(()=>{}) : a.pause();
+  apPaint();
+}
+function apNext(){ if (AP.i + 1 < AP.list.length) apPlay(AP.i + 1); else { apEl().pause(); apPaint(); } }
+function apPrev(){ if (AP.i > 0) apPlay(AP.i - 1); }
+function apSeek(sec){ const a = apEl(); a.currentTime = Math.max(0, Math.min(a.duration||1e9, a.currentTime + sec)); apPaint(); }
+function apScrub(v){ const a = apEl(); if (a.duration) a.currentTime = a.duration * (v/1000); apPaint(); }
+
+/* 잠금화면·이어폰 버튼에서 조작할 수 있게 합니다. */
+function apMedia(t){
+  if (!("mediaSession" in navigator)) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: t.title, artist: "정보처리기사 필기", album: t.subject
+    });
+    navigator.mediaSession.setActionHandler("play", () => apEl().play());
+    navigator.mediaSession.setActionHandler("pause", () => apEl().pause());
+    navigator.mediaSession.setActionHandler("nexttrack", apNext);
+    navigator.mediaSession.setActionHandler("previoustrack", apPrev);
+    navigator.mediaSession.setActionHandler("seekbackward", () => apSeek(-15));
+    navigator.mediaSession.setActionHandler("seekforward", () => apSeek(30));
+  } catch(e){}
+}
+
+/* 이어듣기 — 마지막 트랙과 위치를 기억합니다. */
+function apSave(){
+  const a = AP.el;
+  if (!a || AP.i < 0) return;
+  DB.pref = DB.pref || {};
+  DB.pref.audioLast = { file: AP.list[AP.i].file, at: Math.floor(a.currentTime||0) };
+  if (!AP._st || Date.now() - AP._st > 5000){ AP._st = Date.now(); save(); }
+}
+function apResume(){
+  const last = DB.pref && DB.pref.audioLast;
+  if (!last){ apPlay(0); return; }
+  const i = AP.list.findIndex(t => t.file === last.file);
+  i >= 0 ? apPlay(i, last.at) : apPlay(0);
+}
+
+/* 슬립 타이머 — 끝나기 30초 전부터 소리를 줄이고 멈춥니다. */
+function apSleep(min){
+  clearInterval(AP.timer); AP.timer = null; AP.endAt = 0;
+  const a = apEl();
+  a.volume = 1;
+  if (!min){ if (view === "audio") render(); return; }
+  AP.endAt = Date.now() + min * 60000;
+  if (view === "audio") render();
+  AP.timer = setInterval(() => {
+    const left = (AP.endAt - Date.now()) / 1000;
+    if (left <= 0){ a.pause(); a.volume = 1; clearInterval(AP.timer); AP.timer = null; AP.endAt = 0; }
+    else if (left <= 30) a.volume = Math.max(0, left / 30);
+    apPaint();
+  }, 1000);
+  apPaint();
+}
+
+function apSetBase(){
+  const v = prompt("음성 파일 위치를 입력하세요.\n\n같은 사이트에 올렸다면 audio/ 그대로 두시면 됩니다.\nGitHub Releases 등 다른 곳이면 그 주소를 넣으세요.", apBase());
+  if (v === null) return;
+  DB.pref = DB.pref || {}; DB.pref.audioBase = v.trim() || "audio/"; save();
+  AP.i = -1; if (AP.el){ AP.el.pause(); AP.el.src = ""; }
+  apLoad();
+}
+
+function apPaint(){
+  if (view !== "audio") return;
+  const el = document.getElementById("apbody");
+  if (el) el.innerHTML = apBody();
+}
+
+function apBody(){
+  const a = AP.el, t = AP.list[AP.i];
+  const playing = a && !a.paused && AP.i >= 0;
+  const cur = a ? a.currentTime : 0, dur = (a && a.duration) || (t && t.sec) || 0;
+  const pct = dur ? Math.round(cur / dur * 1000) : 0;
+  const leftMin = AP.endAt ? Math.ceil((AP.endAt - Date.now()) / 60000) : 0;
+  return `
+    <div class="apnow">${t ? esc(t.subject) : "재생할 트랙을 고르세요"}</div>
+    <div class="aptitle">${t ? esc(t.title) : "—"}</div>
+    <input class="apbar" type="range" min="0" max="1000" value="${pct}"
+      oninput="apScrub(this.value)" aria-label="재생 위치">
+    <div class="aptime"><span>${apFmt(cur)}</span><span>${apFmt(dur)}</span></div>
+    <div class="aprow">
+      <button class="btn btn-ghost apsm" onclick="apPrev()">◀◀</button>
+      <button class="btn btn-ghost apsm" onclick="apSeek(-15)">−15초</button>
+      <button class="lsbig ${playing?"on":""}" onclick="apToggle()">${playing?"❚❚":"▶"}</button>
+      <button class="btn btn-ghost apsm" onclick="apSeek(30)">+30초</button>
+      <button class="btn btn-ghost apsm" onclick="apNext()">▶▶</button>
+    </div>
+    ${AP.endAt ? `<div class="apsleep">🌙 ${leftMin}분 뒤 자동으로 멈춥니다</div>` : ""}
+    ${AP.err ? `<div class="aperr">${esc(AP.err)}</div>` : ""}`;
+}
+
+function viewAudio(){
+  const mins = [0, 15, 30, 45, 60];
+  let list = "";
+  if (AP.loaded){
+    let cur = 0;
+    list = AP.list.map((t, i) => {
+      const head = t.s !== cur ? (cur = t.s, `<div class="apgrp">${t.s}과목 ${esc(t.subject)}</div>`) : "";
+      const on = i === AP.i ? " on" : "";
+      return head + `<button class="aptrack${on}" onclick="apPlay(${i})">
+        <span class="apn">${String(t.from).padStart(3,"0")}–${String(t.to).padStart(3,"0")}</span>
+        <span>${esc(t.title)}</span><span class="apd">${apFmt(t.sec)}</span></button>`;
+    }).join("");
+  }
+  const total = AP.list.reduce((n, t) => n + (t.sec||0), 0);
+  return `<div class="row spread">
+      <button class="btn btn-ghost" onclick="go('home')">← 나가기</button>
+      <div class="timer">🎵 음성 듣기</div>
+      <span class="timer">${AP.list.length ? AP.list.length + "트랙" : ""}</span>
+    </div>
+    <div class="card lscard"><div id="apbody">${apBody()}</div></div>
+
+    <div class="card"><h2>수면 타이머</h2>
+      <div class="chips">${mins.map(m=>`<button class="chip ${(!AP.endAt&&!m)||(AP.endAt&&Math.ceil((AP.endAt-Date.now())/60000)===m)?"on":""}" onclick="apSleep(${m})">${m?m+"분":"끄기"}</button>`).join("")}</div>
+      <div class="note">정한 시간이 되면 소리를 서서히 줄이며 멈춥니다.
+      화면을 잠가도 재생이 이어지고, 잠금화면과 이어폰 버튼으로 조작할 수 있습니다.
+      마지막으로 듣던 위치를 기억하므로 다음에 이어서 들을 수 있습니다.</div>
+    </div>
+
+    <div class="card"><h2>트랙</h2>
+      ${AP.loaded ? `<div class="aplist">${list}</div>
+        <div class="note">전체 ${Math.floor(total/3600)}시간 ${Math.floor(total%3600/60)}분</div>`
+      : `<div class="empty">${AP.err ? esc(AP.err) : "불러오는 중…"}</div>
+        <div class="note">음성 파일을 아직 만들지 않으셨다면 저장소에서 아래를 실행하세요.
+        <br><code>python3 tools/make_audio.py --all --voice ko-KR-SunHiNeural@-15Hz</code>
+        <br>만든 뒤 <code>python3 tools/make_audio.py --manifest</code> 로 트랙 목록을 만들고,
+        <code>audio/</code> 폴더와 <code>audio-manifest.json</code> 을 사이트에 올리면 여기서 바로 재생됩니다.</div>`}
+      <div class="row" style="margin-top:10px">
+        <button class="btn btn-ghost" onclick="apSetBase()">파일 위치 바꾸기</button>
+        <button class="btn btn-ghost" onclick="apLoad()">목록 새로고침</button>
+      </div>
+      <div class="note">현재 위치 <code>${esc(apBase())}</code></div>
+    </div>`;
+}
+
 /* ═══════════════ 뷰 ═══════════════ */
 function render(){
   const app = document.getElementById("app");
   app.innerHTML = view === "quiz" ? viewQuiz() : view === "listen" ? viewListen()
+                : view === "audio" ? viewAudio()
                 : view === "result" ? viewResult() : view === "stats" ? viewStats() : viewHome();
   window.scrollTo(0, view === "quiz" ? 0 : window.scrollY > 400 ? 0 : window.scrollY);
   if (view === "quiz" && sess.limitSec){ const el = document.getElementById("timer"); if (el) paintTimer(el, tickLeft()); }
@@ -947,6 +1170,10 @@ function viewHome(){
       <button class="mode" onclick="listenStart('weak', true)" ${weak?"":"disabled"}>
         <div class="mt"><i class="dot d-mag"></i>🎙 듣고 말하기 · 약점</div>
         <div class="md">${weak ? "틀렸거나 찍은 " + Math.min(weak,30) + "문항" : "아직 약점 없음"}</div></button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn btn-primary" style="width:100%" onclick="go('audio'); apLoad()">
+        🎵 만들어 둔 MP3 로 듣기 — 화면 잠그고 자면서</button>
     </div>
     <div class="note"><b>듣기만</b>은 문제와 보기를 읽고 잠시 멈춘 뒤 정답과 해설을 읽습니다. 학습 기록은 건드리지 않습니다.
     <b>듣고 말하기</b>는 보기를 읽은 뒤 마이크가 켜져, "2번"처럼 말하면 채점하고 학습 기록에 반영합니다.

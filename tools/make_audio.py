@@ -370,6 +370,55 @@ def mac_say(text, out, voice):
 # 4. 만들기
 # ─────────────────────────────────────────────────────────────
 
+def build_manifest():
+    """audio/ 를 훑어 트랙 목록을 만듭니다. 앱의 오디오 플레이어가 이 파일을 읽습니다.
+       이미 만들어 둔 파일만 보므로 다시 합성하지 않습니다."""
+    tracks = []
+    for s in range(1, 6):
+        name = "%d과목_%s" % (s, SUBJ[s].replace(" ", ""))
+        d = os.path.join(OUT_ROOT, name)
+        if not os.path.isdir(d):
+            continue
+        for f in sorted(x for x in os.listdir(d) if x.endswith(".mp3")):
+            sec = 0
+            if have("ffprobe"):
+                try:
+                    sec = int(float(subprocess.check_output(
+                        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                         "-of", "default=nw=1:nk=1", os.path.join(d, f)], text=True).strip()))
+                except Exception:
+                    pass
+            m = re.search(r"_(\d+)-(\d+)\.mp3$", f)
+            tracks.append({
+                "s": s,
+                "subject": SUBJ[s],
+                "file": "%s/%s" % (name, f),
+                "title": "%s %s-%s번" % (SUBJ[s], m.group(1), m.group(2)) if m else f[:-4],
+                "from": int(m.group(1)) if m else 0,
+                "to": int(m.group(2)) if m else 0,
+                "sec": sec,
+                "bytes": os.path.getsize(os.path.join(d, f)),
+            })
+    return tracks
+
+def write_manifest():
+    tracks = build_manifest()
+    if not tracks:
+        print("  audio/ 에 만들어 둔 파일이 없습니다.")
+        return None
+    data = {"version": 1, "tracks": tracks}
+    inner = os.path.join(OUT_ROOT, "manifest.json")
+    outer = os.path.join(ROOT, "audio-manifest.json")
+    for p2 in (inner, outer):
+        with open(p2, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+    tot = sum(t["sec"] for t in tracks)
+    mb = sum(t["bytes"] for t in tracks) / 1024 / 1024
+    print("  트랙 %d개 · 약 %d시간 %d분 · %.0f MB" % (len(tracks), tot // 3600, (tot % 3600) // 60, mb))
+    print("  %s" % outer)
+    print("  이 파일(audio-manifest.json)은 작아서 저장소에 올려도 됩니다.")
+    return data
+
 def pack_zip(subs):
     """과목별로 zip 을 만듭니다. 폰·클라우드·다른 PC 로 옮길 때 씁니다."""
     import zipfile
@@ -668,6 +717,8 @@ def main():
     ap.add_argument("--force", action="store_true", help="이미 만든 파일도 다시 만들기")
     ap.add_argument("--clean-samples", action="store_true",
                     help="맛보기 파일만 지웁니다 (과목 폴더는 건드리지 않습니다)")
+    ap.add_argument("--manifest", action="store_true",
+                    help="이미 만든 파일로 트랙 목록(audio-manifest.json)을 만듭니다")
     ap.add_argument("--zip", action="store_true",
                     help="만든 뒤 과목별 zip 으로 묶습니다 (폰·클라우드로 옮길 때)")
     ap.add_argument("--copy-to", default=None,
@@ -701,6 +752,11 @@ def main():
         args.voice = "%s@%s" % (args.voice, args.pitch)
 
     init_abbr()
+
+    if args.manifest:
+        print("트랙 목록을 만듭니다.")
+        write_manifest()
+        return
 
     if args.clean_samples:
         n = 0
@@ -756,6 +812,9 @@ def main():
     print()
     for s in subs:
         asyncio.run(build_subject(s, args))
+
+    print("\n트랙 목록을 만드는 중…")
+    write_manifest()
 
     if args.zip:
         print("\nzip 으로 묶는 중…")

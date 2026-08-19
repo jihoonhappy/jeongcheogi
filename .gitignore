@@ -1,4 +1,5 @@
 audio/
+!audio-manifest.json
 __pycache__/
 *.pyc
 *.mp3.aiff

@@ -220,34 +220,41 @@ python3 tools/make_audio.py --clean-samples   # 샘플만 삭제, 과목 폴더�
 
 만들어 둔 과목이 있으면 실행할 때 알려 주고 건너뜁니다. 다른 목소리로 다시 만들려면 `--force`.
 
-### 다른 기기에서도 들으려면
+### 앱에서 바로 재생하기 — 자면서 듣기
+
+만든 MP3 를 사이트에 올려 두면 **앱 안의 플레이어**로 재생할 수 있습니다.
+브라우저 내장 음성과 달리 **화면을 잠가도 재생이 이어지고**, 잠금화면과 이어폰 버튼으로 조작됩니다.
+
+| 기능 | 설명 |
+|---|---|
+| 수면 타이머 | 15·30·45·60분. 끝나기 30초 전부터 소리를 줄이며 멈춥니다 |
+| 이어듣기 | 마지막 트랙과 위치를 기억합니다 |
+| 잠금화면 조작 | 재생·정지·앞뒤 트랙·15초 뒤로·30초 앞으로 |
+| 연속 재생 | 한 트랙이 끝나면 다음으로 넘어갑니다 |
+
+**올리는 방법**
+
+```bash
+python3 tools/make_audio.py --manifest    # 트랙 목록(audio-manifest.json) 생성
+```
+
+그다음 `.gitignore` 에서 `audio/` 줄을 지우고 `audio/` 폴더와 `audio-manifest.json` 을 함께 push 하면
+휴대폰에서 사이트에 접속해 바로 들을 수 있습니다.
+
+저장소를 무겁게 하고 싶지 않다면 **GitHub Releases 에 올리고 앱에서 위치만 바꾸면** 됩니다.
+플레이어 화면의 `파일 위치 바꾸기` 에 릴리스 주소를 넣으세요.
+이 경우 저장소에는 `audio-manifest.json` 하나만 올리면 됩니다.
+
+> 음성 파일은 서비스 워커가 오프라인 캐시에 담지 않습니다.
+> 과목 전체가 200MB 가 넘어 기기 저장공간을 잡아먹기 때문입니다.
+
+### 파일을 직접 옮기려면
 
 | 방법 | 어떻게 | 언제 좋은가 |
 |---|---|---|
-| **클라우드 폴더로 복사** | `--copy-to ~/Library/Mobile\ Documents/com~apple~CloudDocs/정처기음성` | iPhone 파일 앱에서 바로 재생. 가장 간단 |
-| **음악 앱에 넣기** | `audio/` 의 mp3 를 음악 앱으로 끌어다 놓고 기기 동기화 | 화면 잠금 재생·이어듣기·재생목록이 제대로 동작 |
-| **zip 으로 묶어 전송** | `--zip` → AirDrop·메일·메신저 | 다른 PC 로 한 번에 옮길 때 |
-| **GitHub Releases** | 저장소 Releases 에 zip 첨부 | 어느 기기에서든 URL 로 내려받기. 클론은 가벼운 채로 유지 |
-
-만들면서 바로 옮기려면 옵션을 함께 주면 됩니다.
-
-```bash
-python3 tools/make_audio.py --all --voice ko-KR-SunHiNeural@-15Hz --zip \
-  --copy-to ~/Library/Mobile\ Documents/com~apple~CloudDocs/정처기음성
-```
-
-**이미 만들어 둔 것을 옮기기만 할 때는** 과목을 지정하지 말고 옵션만 주세요.
-새로 만들지 않고 있는 파일만 처리합니다.
-
-```bash
-python3 tools/make_audio.py --zip
-python3 tools/make_audio.py --copy-to ~/Library/Mobile\ Documents/com~apple~CloudDocs/정처기음성
-```
-
-**저장소에 직접 넣는 것은 권장하지 않습니다.** 5과목 전체가 약 210MB 인데,
-GitHub 한도에는 걸리지 않지만 클론이 무거워지고 서비스 워커가 이걸 전부
-오프라인 캐시에 담으려 합니다. 굳이 넣으신다면 `.gitignore` 에서 `audio/` 를 빼고
-`sw.js` 의 `ASSETS` 에는 **절대 추가하지 마세요.**
+| **클라우드 폴더로 복사** | `--copy-to ~/Library/Mobile\ Documents/com~apple~CloudDocs/정처기음성` | iPhone 파일 앱에서 바로 재생 |
+| **음악 앱에 넣기** | `audio/` 의 mp3 를 음악 앱으로 끌어다 놓고 기기 동기화 | 오프라인 재생. 데이터를 안 씁니다 |
+| **zip 으로 묶어 전송** | `--zip` → AirDrop | 다른 PC 로 한 번에 |
 
 ### 기기별로 무엇을 쓰면 되나
 
