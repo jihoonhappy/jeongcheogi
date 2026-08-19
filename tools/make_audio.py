@@ -14,7 +14,8 @@
 
 사용법
   python3 tools/make_audio.py --list-voices        # 어떤 목소리가 있는지 보기
-  python3 tools/make_audio.py --sample             # 목소리별 30초 맛보기 만들기
+  python3 tools/make_audio.py --sample             # 여성 목소리 맛보기 만들기
+  python3 tools/make_audio.py --sample --subject 2 --voice ko-KR-JiMinNeural,ko-KR-YuJinNeural
   python3 tools/make_audio.py --subject 1          # 1과목 전체 만들기
   python3 tools/make_audio.py --subject 1 --voice ko-KR-JiMinNeural
   python3 tools/make_audio.py --all                # 5과목 전부
@@ -384,11 +385,16 @@ async def build_subject(s, args):
 
 async def make_samples(args):
     os.makedirs(OUT_ROOT, exist_ok=True)
-    bank = [q for q in load_bank() if q["s"] == 1 and not is_mono(q["q"])]
+    # 맛보기도 실제로 만들 과목의 문항으로 들려줍니다.
+    sub = args.subject or 1
+    bank = [q for q in load_bank() if q["s"] == sub and not is_mono(q["q"])]
     q = bank[0]
     text = " ".join(t for t, _ in segments_for(q, 1, 0))[:600]
     outs = []
-    if args.engine == "edge":
+    if args.voice and "," in str(args.voice):
+        # --voice 에 쉼표로 여러 개를 주면 그 목소리들만 비교해 만듭니다.
+        cands = [v.strip() for v in str(args.voice).split(",") if v.strip()]
+    elif args.engine == "edge":
         vs = await edge_ko_voices()
         if args.gender != "all":
             f = [v for v in vs if (v[1] or "").lower() == args.gender.lower()]
@@ -396,6 +402,7 @@ async def make_samples(args):
         cands = [v[0] for v in vs][:args.max_samples]
     else:
         cands = mac_korean_voices() or [None]
+    print("  %d과목 %s 문항으로 만듭니다.\n" % (sub, SUBJ[sub]))
     for v in cands:
         name = (v or "기본").replace(" ", "")
         out = os.path.join(OUT_ROOT, "샘플_%s.mp3" % name)
@@ -412,7 +419,7 @@ async def make_samples(args):
     for o in outs:
         print("  " + o)
     print("\n들어 보시고 마음에 드는 것으로 만드세요:")
-    print("  python3 tools/make_audio.py --subject 1 --voice <목소리이름>")
+    print("  python3 tools/make_audio.py --subject %d --voice <목소리이름>" % sub)
 
 def mac_korean_voices():
     try:
@@ -478,7 +485,7 @@ def main():
         if args.engine is None:
             sys.exit("음성 엔진이 없습니다.  pip3 install edge-tts  를 먼저 실행해 주세요.")
 
-    if args.engine == "edge" and args.voice is None:
+    if args.engine == "edge" and args.voice is None and not args.sample:
         args.voice = DEFAULT_VOICE
 
     init_abbr()
