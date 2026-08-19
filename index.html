@@ -444,6 +444,20 @@ const ABBR_KEYS = Object.keys(ABBR).sort((a,b) => b.length - a.length);
 const esc4re = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const ABBR_RE = new RegExp("(?<![A-Za-z0-9가-힣])(" + ABBR_KEYS.map(esc4re).join("|") + ")(?![A-Za-z0-9])", "g");
 
+/* 숫자를 한자어 읽기로 바꿉니다. 1→일, 2→이, 37→삼십칠.
+   "1번"을 그대로 읽히면 음성 엔진이 "한 번"(횟수)으로 읽어 버리기 때문입니다. */
+const SINO = "영일이삼사오육칠팔구";
+function sino(n){
+  n = parseInt(n, 10);
+  if (!n) return "영";
+  let out = "";
+  if (n >= 100){ const h = Math.floor(n/100); out += (h===1?"":SINO[h]) + "백"; n %= 100; }
+  if (n >= 10){ const t = Math.floor(n/10); out += (t===1?"":SINO[t]) + "십"; n %= 10; }
+  if (n) out += SINO[n];
+  return out;
+}
+const beon = n => sino(n) + "번";
+
 /* 낭독용 텍스트 정리 — 화면용 기호는 귀에 들리지 않으므로 말로 바꿉니다. */
 function sayText(s){
   let t = String(s);
@@ -451,11 +465,15 @@ function sayText(s){
   // 한글 뒤 괄호 안이 영문뿐이면 통째로 뺍니다. "공동 코드 소유(Collective Ownership)" → "공동 코드 소유"
   t = t.replace(/\(([^()]*)\)/g, (m, inner) =>
         /^[A-Za-z0-9 .,'’\/&+\-_]+$/.test(inner) ? "" : " " + inner + " ");
-  t = t.replace(/[→⇒]/g, " 다음 ").replace(/↔/g, " 그리고 ");
+  t = t.replace(/[→⇒]/g, ", 그다음 ").replace(/↔/g, ", 그리고 ");
   t = t.replace(/&/g, " 앤 ").replace(/×/g, " 곱하기 ").replace(/÷/g, " 나누기 ");
-  t = t.replace(/[①②③④]/g, m => " " + ("①②③④".indexOf(m) + 1) + "번 ");
+  t = t.replace(/[①②③④]/g, m => " " + beon("①②③④".indexOf(m) + 1) + " ");
   t = t.replace(/\n+/g, ". ");
   t = t.replace(ABBR_RE, m => ABBR[m] || m);
+  // 숫자 + 번/과목은 한자어로 읽어야 합니다 (1번 → "한 번"(X) / "일번"(O))
+  t = t.replace(/(?<![0-9.])(\d{1,3})번(?!\d)/g, (m, d) => beon(d));
+  t = t.replace(/(?<![0-9.])([1-5])과목/g, (m, d) => sino(d) + "과목");
+  t = t.replace(/([가-힣])\s*-\s*(?=[가-힣])/g, "$1, ");
   t = t.replace(/·/g, ", ").replace(/[~∼]/g, " 에서 ");
   t = t.replace(/[\[\]"']/g, " ").replace(/\s{2,}/g, " ").replace(/\s+([.,])/g, "$1");
   return t.trim();
@@ -468,9 +486,11 @@ function pickVoice(){
   const saved = (DB.pref && DB.pref.voice) || "";
   const vs = koVoices();
   if (!vs.length) return null;
+  const female = /Yuna|유나|Sora|Nara|SunHi|Heami|JiMin|SeoHyeon|YuJin|여성|Female/i;
   return vs.find(v => v.name === saved)
+      || vs.find(v => /Google/i.test(v.name) && female.test(v.name))
+      || vs.find(v => female.test(v.name))
       || vs.find(v => /Google/i.test(v.name))
-      || vs.find(v => /Siri|Yuna|유나|Sora|Nara/i.test(v.name))
       || vs[0];
 }
 if (TTS && TTS.addEventListener) TTS.addEventListener("voiceschanged", () => {
@@ -491,15 +511,15 @@ function chunk(text, max = 170){
 /* 한 문항의 낭독 순서. t가 함수면 그 시점에 문장을 만듭니다(정답 확인처럼 결과에 따라 달라지는 것). */
 function buildSteps(q, n, total){
   const st = [];
-  st.push({ t: `${n}번 문제.`, after: 0.35 });
+  st.push({ t: `${beon(n)} 문제.`, after: 0.35 });
   st.push({ t: sayText(q.q), after: 0.45 });
-  q.c.forEach((c, i) => st.push({ t: `${i+1}번, ${sayText(c)}`, after: 0.3 }));
+  q.c.forEach((c, i) => st.push({ t: `${beon(i+1)}, ${sayText(c)}`, after: 0.3 }));
   if (LS.talk){
     st.push({ t: "정답을 말씀해 주세요.", after: 0.15, ask: true });
     st.push({ t: () => judgeLine(q), after: 0.5, answer: true });
   } else {
     st.push({ t: "정답을 생각해 보세요.", after: LS.gap, think: true });
-    st.push({ t: `정답은 ${q.a + 1}번, ${sayText(q.c[q.a])}.`, after: 0.5, answer: true });
+    st.push({ t: `정답은 ${beon(q.a + 1)}, ${sayText(q.c[q.a])}.`, after: 0.5, answer: true });
   }
   st.push({ t: `해설. ${sayText(q.e)}`, after: 1.0 });
   return st;
@@ -510,17 +530,17 @@ function judgeLine(q){
   const ans = q.a + 1;
   if (LS.said === "unsure"){
     LS.unsure++; applySRS(q, false, "unsure"); save();
-    return `모르겠다고 하셨습니다. 정답은 ${ans}번, ${sayText(q.c[q.a])}.`;
+    return `모르겠다고 하셨습니다. 정답은 ${beon(ans)}, ${sayText(q.c[q.a])}.`;
   }
   if (!LS.said){
     LS.unsure++; applySRS(q, false, "unsure"); save();
-    return `답을 듣지 못했습니다. 정답은 ${ans}번, ${sayText(q.c[q.a])}.`;
+    return `답을 듣지 못했습니다. 정답은 ${beon(ans)}, ${sayText(q.c[q.a])}.`;
   }
   const ok = LS.said === ans;
   if (ok){ LS.right++; applySRS(q, true); } else { LS.wrong++; applySRS(q, false); }
   save();
-  return ok ? `${LS.said}번, 정답입니다.`
-            : `${LS.said}번이라고 하셨습니다. 정답은 ${ans}번, ${sayText(q.c[q.a])}.`;
+  return ok ? `${beon(LS.said)}, 정답입니다.`
+            : `${beon(LS.said)}이라고 하셨습니다. 정답은 ${beon(ans)}, ${sayText(q.c[q.a])}.`;
 }
 
 function listenStart(mode, talk){
@@ -643,7 +663,7 @@ function startMic(){
     if (val === "again"){ listenAgain(); return; }
     if (val === null && LS.tries < 1){   // 한 번은 다시 물어봅니다
       LS.tries++;
-      const u = new SpeechSynthesisUtterance("다시 한 번, 번호를 말씀해 주세요.");
+      const u = new SpeechSynthesisUtterance("잘 못 들었습니다. 번호를 다시 말씀해 주세요.");
       u.lang = "ko-KR"; u.rate = LS.rate; if (LS.voice) u.voice = LS.voice;
       u.onend = () => setTimeout(startMic, 200); u.onerror = u.onend;
       TTS.speak(u); return;
@@ -731,7 +751,7 @@ function setVoice(name){
   const v = koVoices().find(x => x.name === name);
   LS.voice = v || LS.voice; prefSet("voice", name);
   paintVoices();
-  const u = new SpeechSynthesisUtterance("안녕하세요. 이 음성으로 문제를 읽어 드립니다.");
+  const u = new SpeechSynthesisUtterance("이 목소리로 읽어 드립니다. 일번, 이번, 삼번, 사번.");
   u.lang = "ko-KR"; u.rate = LS.rate; if (LS.voice) u.voice = LS.voice;
   try { TTS.cancel(); TTS.speak(u); } catch(e){}
 }

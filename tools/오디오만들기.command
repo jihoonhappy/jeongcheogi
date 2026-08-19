@@ -26,11 +26,12 @@ if ! python3 -c "import edge_tts" >/dev/null 2>&1; then
   fi
 fi
 
-echo "먼저 목소리 맛보기를 만듭니다. (30초 정도)"
+echo "먼저 여성 목소리 맛보기 4개를 만듭니다. (1분 정도)"
 python3 tools/make_audio.py --sample || { echo; read -r -p "엔터를 누르면 닫힙니다..." _; exit 1; }
 
+open audio 2>/dev/null
 echo
-echo "audio/ 폴더의 샘플 파일을 들어 보세요."
+echo "열린 폴더의 샘플 파일을 들어 보세요."
 echo "그대로 진행하면 기본 목소리(ko-KR-SunHiNeural, 여성)로 만듭니다."
 read -r -p "다른 목소리를 쓰시려면 이름을 붙여넣고, 아니면 그냥 엔터: " V
 echo
@@ -38,7 +39,7 @@ echo
 ARGS=(--subject 1)
 [ -n "$V" ] && ARGS+=(--voice "$V")
 
-echo "1과목 소프트웨어 설계를 만듭니다. 20~30분쯤 걸립니다."
+echo "1과목 소프트웨어 설계를 만듭니다. 20~40분쯤 걸립니다."
 echo "중간에 멈춰도 다시 실행하면 이어서 만듭니다."
 echo
 python3 tools/make_audio.py "${ARGS[@]}"

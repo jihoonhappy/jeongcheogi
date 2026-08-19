@@ -16,7 +16,7 @@
   python3 tools/make_audio.py --list-voices        # 어떤 목소리가 있는지 보기
   python3 tools/make_audio.py --sample             # 목소리별 30초 맛보기 만들기
   python3 tools/make_audio.py --subject 1          # 1과목 전체 만들기
-  python3 tools/make_audio.py --subject 1 --voice ko-KR-InJoonNeural
+  python3 tools/make_audio.py --subject 1 --voice ko-KR-JiMinNeural
   python3 tools/make_audio.py --all                # 5과목 전부
 
 필요한 것
@@ -35,12 +35,20 @@ OUT_ROOT = os.path.join(ROOT, "audio")
 SUBJ = {1: "소프트웨어 설계", 2: "소프트웨어 개발", 3: "데이터베이스 구축",
         4: "프로그래밍 언어 활용", 5: "정보시스템 구축관리"}
 
-# edge-tts 한국어 신경망 음성. 이름 뒤 설명은 골라 쓰실 때 참고용입니다.
+# edge-tts 한국어 신경망 음성. 실제 목록은 실행할 때 서버에서 받아 오고,
+# 못 받으면 아래 값을 씁니다. 여성 음성을 앞에 둡니다.
 EDGE_VOICES = [
-    ("ko-KR-SunHiNeural",  "여성 · 차분하고 또렷함 · 기본값으로 권장"),
-    ("ko-KR-InJoonNeural", "남성 · 낮고 안정적 · 자기 전 듣기 좋음"),
-    ("ko-KR-HyunsuMultilingualNeural", "남성 · 최신 모델 · 영어 섞인 문장에 강함"),
+    ("ko-KR-SunHiNeural", "Female", "여성 · 차분하고 또렷함 · 기본값"),
+    ("ko-KR-JiMinNeural", "Female", "여성 · 밝고 또렷함"),
+    ("ko-KR-SeoHyeonNeural", "Female", "여성 · 부드러움"),
+    ("ko-KR-YuJinNeural", "Female", "여성 · 발랄함"),
+    ("ko-KR-SoonBokNeural", "Female", "여성 · 낮고 차분함"),
+    ("ko-KR-InJoonNeural", "Male", "남성 · 낮고 안정적"),
+    ("ko-KR-HyunsuMultilingualNeural", "Male", "남성 · 영어 섞인 문장에 강함"),
+    ("ko-KR-BongJinNeural", "Male", "남성 · 또렷함"),
+    ("ko-KR-GookMinNeural", "Male", "남성 · 편안함"),
 ]
+DEFAULT_VOICE = "ko-KR-SunHiNeural"
 
 # ─────────────────────────────────────────────────────────────
 # 1. 문제은행 읽기
@@ -109,6 +117,30 @@ def init_abbr():
     ABBR_RE = re.compile(
         r"(?<![A-Za-z0-9가-힣])(" + "|".join(re.escape(k) for k in keys) + r")(?![A-Za-z0-9])")
 
+_SINO = "영일이삼사오육칠팔구"
+
+def sino(n):
+    """숫자를 한자어 읽기로. 1→일, 2→이, 37→삼십칠.
+       TTS에 '1번'을 그대로 주면 '한 번'(횟수)으로 읽어 버리므로 한글로 바꿔 넣습니다."""
+    n = int(n)
+    if n == 0:
+        return "영"
+    out = ""
+    if n >= 100:
+        h = n // 100
+        out += ("" if h == 1 else _SINO[h]) + "백"
+        n %= 100
+    if n >= 10:
+        t = n // 10
+        out += ("" if t == 1 else _SINO[t]) + "십"
+        n %= 10
+    if n:
+        out += _SINO[n]
+    return out
+
+def beon(n):
+    return sino(n) + "번"
+
 def say_text(s):
     t = str(s)
     t = t.replace("V(G)", "브이지")
@@ -116,13 +148,17 @@ def say_text(s):
     t = re.sub(r"\(([^()]*)\)",
                lambda m: "" if re.fullmatch(r"[A-Za-z0-9 .,'’/&+\-_]+", m.group(1)) else " " + m.group(1) + " ",
                t)
-    t = re.sub(r"[→⇒]", " 다음 ", t).replace("↔", " 그리고 ")
+    t = re.sub(r"[→⇒]", ", 그다음 ", t).replace("↔", ", 그리고 ")
     t = t.replace("&", " 앤 ").replace("×", " 곱하기 ").replace("÷", " 나누기 ")
     for i, ch in enumerate("①②③④"):
-        t = t.replace(ch, " %d번 " % (i + 1))
+        t = t.replace(ch, " " + beon(i + 1) + " ")
     t = re.sub(r"\n+", ". ", t)
     if ABBR_RE:
         t = ABBR_RE.sub(lambda m: ABBR.get(m.group(0), m.group(0)), t)
+    # 숫자 + 번/과목은 한자어로 읽어야 합니다 (1번 → 한 번(X) / 일번(O))
+    t = re.sub(r"(?<![0-9.])([0-9]{1,3})번(?![0-9])", lambda m: beon(m.group(1)), t)
+    t = re.sub(r"(?<![0-9.])([1-5])과목", lambda m: sino(m.group(1)) + "과목", t)
+    t = re.sub(r"(?<=[가-힣])\s*-\s*(?=[가-힣])", ", ", t)
     t = t.replace("·", ", ")
     t = re.sub(r"[~∼]", " 에서 ", t)
     t = re.sub(r"[\[\]\"']", " ", t)
@@ -138,14 +174,20 @@ def is_mono(q):
         return True
     return bool(re.search(r"[{};]|\bSELECT\b|\bprintf\b|\bdef\b|\bint\b", q))
 
-def parts_for(q, n):
-    """한 문항을 (앞부분, 뒷부분)으로 나눕니다. 그 사이에 생각할 시간을 넣습니다."""
-    head = "%d번 문제. %s " % (n, say_text(q["q"]))
+def segments_for(q, n, gap):
+    """한 문항을 여러 조각으로 나눕니다. (읽을 말, 뒤에 넣을 무음 초)
+
+    조각마다 따로 합성하고 사이에 정확한 길이의 무음을 넣습니다.
+    한 번에 길게 읽히면 음성 엔진이 끊어 읽는 위치를 제멋대로 잡아
+    부자연스러워지기 때문에, 끊어 읽는 지점을 이쪽에서 정합니다."""
+    seg = [("%s 문제." % beon(n), 0.45),
+           (say_text(q["q"]), 0.7)]
     for i, c in enumerate(q["c"]):
-        head += "%d번, %s. " % (i + 1, say_text(c))
-    head += "정답을 생각해 보세요."
-    tail = "정답은 %d번, %s. 해설. %s" % (q["a"] + 1, say_text(q["c"][q["a"]]), say_text(q["e"]))
-    return head, tail
+        seg.append(("%s, %s." % (beon(i + 1), say_text(c)), 0.45))
+    seg.append(("정답을 생각해 보세요.", gap))
+    seg.append(("정답은 %s, %s." % (beon(q["a"] + 1), say_text(q["c"][q["a"]])), 0.6))
+    seg.append(("해설. %s" % say_text(q["e"]), 1.4))
+    return seg
 
 # ─────────────────────────────────────────────────────────────
 # 3. 음성 합성
@@ -196,6 +238,20 @@ def concat_mp3(seq, out, meta):
                 with open(p, "rb") as r:
                     shutil.copyfileobj(r, w)
 
+async def edge_ko_voices():
+    """서버에서 실제 쓸 수 있는 한국어 음성 목록을 받아 옵니다. 실패하면 내장 목록을 씁니다."""
+    try:
+        import edge_tts
+        vs = await edge_tts.list_voices()
+        ko = [(v["ShortName"], v.get("Gender", ""), v.get("FriendlyName", ""))
+              for v in vs if v.get("Locale", "").startswith("ko")]
+        if ko:
+            ko.sort(key=lambda x: (x[1] != "Female", x[0]))
+            return ko
+    except Exception:
+        pass
+    return EDGE_VOICES
+
 async def edge_say(text, out, voice, rate):
     import edge_tts
     kw = {"voice": voice}
@@ -236,8 +292,12 @@ async def build_subject(s, args):
     tmp_dir = os.path.join(out_dir, ".tmp")
     os.makedirs(tmp_dir, exist_ok=True)
 
-    gap = make_silence(os.path.join(tmp_dir, "_gap.mp3"), args.gap)
-    tail_gap = make_silence(os.path.join(tmp_dir, "_tail.mp3"), 1.2)
+    sil_cache = {}
+    def sil(sec):
+        key = round(sec, 2)
+        if key not in sil_cache:
+            sil_cache[key] = make_silence(os.path.join(tmp_dir, "_sil_%s.mp3" % str(key).replace(".", "_")), key)
+        return sil_cache[key]
 
     print("  %d과목 %s — %d문항 (코드·표 %d문항 제외), %d문항씩 묶음"
           % (s, SUBJ[s], len(bank), skipped, args.group))
@@ -272,18 +332,18 @@ async def build_subject(s, args):
             print("    %s — 이미 있음, 건너뜀" % os.path.basename(out))
             made.append(out); continue
 
-        intro_txt = "%d과목, %s. %d번부터 %d번까지." % (s, SUBJ[s], lo, hi)
+        intro_txt = "%s. %s부터 %s까지." % (SUBJ[s], beon(lo), beon(hi))
         jobs, seq = [], []
         intro = os.path.join(tmp_dir, "g%02d_intro.mp3" % gi)
-        jobs.append(synth(intro_txt, intro)); seq.append(intro)
+        jobs.append(synth(intro_txt, intro)); seq += [intro, sil(1.0)]
         for k, q in enumerate(grp, 1):
-            head, tail = parts_for(q, lo + k - 1)
-            hp = os.path.join(tmp_dir, "q%05d_a.mp3" % q["id"])
-            tp = os.path.join(tmp_dir, "q%05d_b.mp3" % q["id"])
-            jobs.append(synth(head, hp)); jobs.append(synth(tail, tp))
-            seq += [hp, gap, tp, tail_gap]
+            for si, (text, pause) in enumerate(segments_for(q, lo + k - 1, args.gap)):
+                sp = os.path.join(tmp_dir, "q%05d_%02d.mp3" % (q["id"], si))
+                jobs.append(synth(text, sp))
+                seq += [sp, sil(pause)]
 
-        print("    %s 합성 중… (%d문항)" % (os.path.basename(out), len(grp)), flush=True)
+        print("    %s 합성 중… (%d문항 · 조각 %d개)"
+              % (os.path.basename(out), len(grp), len(jobs)), flush=True)
         await asyncio.gather(*jobs)
 
         seq = [p for p in seq if p and os.path.exists(p) and os.path.getsize(p) > 500]
@@ -326,12 +386,14 @@ async def make_samples(args):
     os.makedirs(OUT_ROOT, exist_ok=True)
     bank = [q for q in load_bank() if q["s"] == 1 and not is_mono(q["q"])]
     q = bank[0]
-    head, tail = parts_for(q, 1)
-    text = head + " ... " + tail
-    text = text[:600]
+    text = " ".join(t for t, _ in segments_for(q, 1, 0))[:600]
     outs = []
     if args.engine == "edge":
-        cands = [v for v, _ in EDGE_VOICES]
+        vs = await edge_ko_voices()
+        if args.gender != "all":
+            f = [v for v in vs if (v[1] or "").lower() == args.gender.lower()]
+            vs = f or vs
+        cands = [v[0] for v in vs][:args.max_samples]
     else:
         cands = mac_korean_voices() or [None]
     for v in cands:
@@ -389,6 +451,9 @@ def main():
     ap.add_argument("--sample", action="store_true", help="목소리별 맛보기만 만들기")
     ap.add_argument("--list-voices", action="store_true", help="쓸 수 있는 목소리 보기")
     ap.add_argument("--voice", default=None, help="목소리 이름")
+    ap.add_argument("--gender", choices=["Female", "Male", "all"], default="Female",
+                    help="맛보기로 만들 목소리 성별. 기본 Female")
+    ap.add_argument("--max-samples", type=int, default=4, help="맛보기 개수. 기본 4")
     ap.add_argument("--engine", choices=["edge", "say"], default=None, help="음성 엔진")
     ap.add_argument("--rate", default=None, help="말 빠르기 (예: +10%%)")
     ap.add_argument("--gap", type=float, default=5.0, help="생각할 시간(초). 기본 5")
@@ -414,7 +479,7 @@ def main():
             sys.exit("음성 엔진이 없습니다.  pip3 install edge-tts  를 먼저 실행해 주세요.")
 
     if args.engine == "edge" and args.voice is None:
-        args.voice = EDGE_VOICES[0][0]
+        args.voice = DEFAULT_VOICE
 
     init_abbr()
 
