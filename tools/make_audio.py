@@ -36,20 +36,35 @@ OUT_ROOT = os.path.join(ROOT, "audio")
 SUBJ = {1: "소프트웨어 설계", 2: "소프트웨어 개발", 3: "데이터베이스 구축",
         4: "프로그래밍 언어 활용", 5: "정보시스템 구축관리"}
 
-# edge-tts 한국어 신경망 음성. 실제 목록은 실행할 때 서버에서 받아 오고,
-# 못 받으면 아래 값을 씁니다. 여성 음성을 앞에 둡니다.
+# 무료 edge-tts 가 실제로 제공하는 한국어 음성은 많지 않습니다.
+# (JiMin·SeoHyeon·YuJin 같은 이름은 유료 Azure 전용이라 여기서는 쓸 수 없습니다.)
+# 실제 목록은 실행할 때 서버에서 받아 오며, 아래는 못 받았을 때 쓰는 최소 목록입니다.
 EDGE_VOICES = [
     ("ko-KR-SunHiNeural", "Female", "여성 · 차분하고 또렷함 · 기본값"),
-    ("ko-KR-JiMinNeural", "Female", "여성 · 밝고 또렷함"),
-    ("ko-KR-SeoHyeonNeural", "Female", "여성 · 부드러움"),
-    ("ko-KR-YuJinNeural", "Female", "여성 · 발랄함"),
-    ("ko-KR-SoonBokNeural", "Female", "여성 · 낮고 차분함"),
     ("ko-KR-InJoonNeural", "Male", "남성 · 낮고 안정적"),
-    ("ko-KR-HyunsuMultilingualNeural", "Male", "남성 · 영어 섞인 문장에 강함"),
-    ("ko-KR-BongJinNeural", "Male", "남성 · 또렷함"),
-    ("ko-KR-GookMinNeural", "Male", "남성 · 편안함"),
+    ("ko-KR-HyunsuMultilingualNeural", "Male", "남성 · 최신 모델 · 영어 섞인 문장에 강함"),
 ]
 DEFAULT_VOICE = "ko-KR-SunHiNeural"
+
+# 목소리가 하나뿐이어도 높낮이·빠르기를 바꾸면 과목마다 다른 느낌을 낼 수 있습니다.
+# "이름@높낮이" 또는 "이름@높낮이@빠르기" 로 씁니다. 예: ko-KR-SunHiNeural@-12Hz
+PITCH_PRESETS = [
+    ("ko-KR-SunHiNeural",          "여성 · 기본"),
+    ("ko-KR-SunHiNeural@-15Hz",    "여성 · 낮고 차분하게 (자기 전에 듣기 좋음)"),
+    ("ko-KR-SunHiNeural@+15Hz",    "여성 · 밝고 또렷하게"),
+    ("ko-KR-SunHiNeural@-8Hz@-8%", "여성 · 낮고 느리게"),
+]
+
+def parse_voice(spec):
+    """'이름@높낮이@빠르기' 를 (이름, 높낮이, 빠르기) 로 나눕니다."""
+    parts = [x.strip() for x in str(spec).split("@")]
+    name = parts[0]
+    pitch = parts[1] if len(parts) > 1 and parts[1] else None
+    rate = parts[2] if len(parts) > 2 and parts[2] else None
+    return name, pitch, rate
+
+def voice_label(spec):
+    return str(spec).replace("@", "_").replace("%", "pct").replace("+", "p")
 
 # ─────────────────────────────────────────────────────────────
 # 1. 문제은행 읽기
@@ -255,11 +270,59 @@ async def edge_ko_voices():
 
 async def edge_say(text, out, voice, rate):
     import edge_tts
-    kw = {"voice": voice}
-    if rate:
-        kw["rate"] = rate
+    name, pitch, vrate = parse_voice(voice)
+    kw = {"voice": name}
+    r = vrate or rate
+    if r:
+        kw["rate"] = r
+    if pitch:
+        kw["pitch"] = pitch
     c = edge_tts.Communicate(text, **kw)
     await c.save(out)
+    # 없는 목소리 이름을 주면 서버가 소리를 주지 않아 0바이트 파일이 만들어집니다.
+    if os.path.getsize(out) < 500:
+        os.remove(out)
+        raise RuntimeError("소리가 만들어지지 않았습니다. 목소리 이름을 확인해 주세요: " + name)
+
+# Azure Speech (유료 계정이지만 매달 50만 자까지 무료). 여성 음성이 여럿 있습니다.
+AZURE_VOICES = ["ko-KR-SunHiNeural", "ko-KR-JiMinNeural", "ko-KR-SeoHyeonNeural",
+                "ko-KR-YuJinNeural", "ko-KR-SoonBokNeural", "ko-KR-GaeulNeural",
+                "ko-KR-InJoonNeural", "ko-KR-BongJinNeural", "ko-KR-GookMinNeural",
+                "ko-KR-HyunsuNeural"]
+
+def azure_say(text, out, voice, rate, key, region):
+    """Azure Speech REST API. edge-tts 에 없는 목소리를 쓸 때 사용합니다."""
+    import urllib.request
+    name, pitch, vrate = parse_voice(voice)
+    r = vrate or rate
+    prosody_open = ""
+    prosody_close = ""
+    if r or pitch:
+        attrs = ""
+        if r:
+            attrs += ' rate="%s"' % r
+        if pitch:
+            attrs += ' pitch="%s"' % pitch
+        prosody_open = "<prosody%s>" % attrs
+        prosody_close = "</prosody>"
+    body = ('<speak version="1.0" xml:lang="ko-KR">'
+            '<voice name="%s">%s%s%s</voice></speak>'
+            % (name, prosody_open,
+               text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"),
+               prosody_close)).encode("utf-8")
+    req = urllib.request.Request(
+        "https://%s.tts.speech.microsoft.com/cognitiveservices/v1" % region,
+        data=body,
+        headers={"Ocp-Apim-Subscription-Key": key,
+                 "Content-Type": "application/ssml+xml",
+                 "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
+                 "User-Agent": "jeongcheogi-audio"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = resp.read()
+    if len(data) < 500:
+        raise RuntimeError("소리가 만들어지지 않았습니다: " + name)
+    with open(out, "wb") as f:
+        f.write(data)
 
 def mac_say(text, out, voice):
     if not HAS_FFMPEG:
@@ -280,7 +343,28 @@ def mac_say(text, out, voice):
 def group_name(s, gi, lo, hi):
     return "%d과목_%02d_%03d-%03d.mp3" % (s, gi, lo, hi)
 
+async def check_voice(args):
+    """긴 작업을 시작하기 전에 목소리 이름이 실제로 있는지 확인합니다."""
+    if args.engine != "edge":
+        return True   # Azure·macOS 는 첫 조각 합성에서 바로 오류가 납니다
+    name = parse_voice(args.voice)[0]
+    vs = await edge_ko_voices()
+    names = [v[0] for v in vs]
+    if name in names:
+        return True
+    print("✗ '%s' 은(는) 무료 edge-tts 에 없는 목소리입니다." % name)
+    print("  쓸 수 있는 한국어 목소리:")
+    for v in vs:
+        mark = "여성" if (v[1] or "").lower() == "female" else "남성"
+        print("     %-36s %s" % (v[0], mark))
+    print("\n  JiMin·SeoHyeon·YuJin 같은 이름은 유료 Azure 전용이라 여기서는 쓸 수 없습니다.")
+    print("  목소리 수가 적어도 높낮이를 바꾸면 느낌이 달라집니다. 예:")
+    print("     --voice ko-KR-SunHiNeural@-15Hz")
+    return False
+
 async def build_subject(s, args):
+    if not await check_voice(args):
+        sys.exit(1)
     bank = [q for q in load_bank() if q["s"] == s]
     total_before = len(bank)
     bank = [q for q in bank if not is_mono(q["q"])]
@@ -313,6 +397,8 @@ async def build_subject(s, args):
                 try:
                     if args.engine == "edge":
                         await edge_say(text, path, args.voice, args.rate)
+                    elif args.engine == "azure":
+                        azure_say(text, path, args.voice, args.rate, args.azure_key, args.azure_region)
                     else:
                         mac_say(text, path, args.voice)
                     if os.path.getsize(path) > 500:
@@ -391,25 +477,50 @@ async def make_samples(args):
     q = bank[0]
     text = " ".join(t for t, _ in segments_for(q, 1, 0))[:600]
     outs = []
-    if args.voice and "," in str(args.voice):
+    if args.voice:
         # --voice 에 쉼표로 여러 개를 주면 그 목소리들만 비교해 만듭니다.
         cands = [v.strip() for v in str(args.voice).split(",") if v.strip()]
+    elif args.engine == "azure":
+        cands = AZURE_VOICES[:args.max_samples]
     elif args.engine == "edge":
         vs = await edge_ko_voices()
+        names = [v[0] for v in vs]
         if args.gender != "all":
             f = [v for v in vs if (v[1] or "").lower() == args.gender.lower()]
             vs = f or vs
         cands = [v[0] for v in vs][:args.max_samples]
+        # 한국어 음성이 적으면 높낮이를 바꾼 변형을 함께 만들어 비교하게 합니다.
+        if len(cands) < 3:
+            cands = [c for c, _ in PITCH_PRESETS if parse_voice(c)[0] in names] or cands
     else:
         cands = mac_korean_voices() or [None]
+
+    if args.engine == "edge":
+        vs = await edge_ko_voices()
+        names = [v[0] for v in vs]
+        bad = [c for c in cands if parse_voice(c)[0] not in names]
+        if bad:
+            print("  ※ 유료 Azure 계정이 있으면 --engine azure 로 이 목소리들을 쓸 수 있습니다.")
+        if bad:
+            print("  ! 다음 이름은 무료 edge-tts 에 없어 건너뜁니다: %s" % ", ".join(bad))
+            print("    쓸 수 있는 목소리: %s" % ", ".join(names))
+            cands = [c for c in cands if parse_voice(c)[0] in names]
+        if not cands:
+            print("\n  높낮이를 바꾼 변형으로 대신 만듭니다.")
+            cands = [c for c, _ in PITCH_PRESETS if parse_voice(c)[0] in names]
     print("  %d과목 %s 문항으로 만듭니다.\n" % (sub, SUBJ[sub]))
+    desc = dict(PITCH_PRESETS)
     for v in cands:
-        name = (v or "기본").replace(" ", "")
+        name = voice_label(v or "기본").replace(" ", "")
         out = os.path.join(OUT_ROOT, "샘플_%s.mp3" % name)
+        if desc.get(v):
+            print("  (%s)" % desc[v])
         print("  %s 만드는 중…" % name, flush=True)
         try:
             if args.engine == "edge":
                 await edge_say(text, out, v, args.rate)
+            elif args.engine == "azure":
+                azure_say(text, out, v, args.rate, args.azure_key, args.azure_region)
             else:
                 mac_say(text, out, v)
             outs.append(out)
@@ -442,7 +553,11 @@ async def list_voices(args):
         print("   ※ '고급/프리미엄' 음성은 설정 → 손쉬운 사용 → 말하기 → 시스템 음성에서 추가로 내려받습니다.")
     else:
         print("   (없거나 macOS가 아닙니다)")
-    print("\n■ edge-tts 신경망 음성 — 품질이 가장 좋습니다")
+    print("\n■ Azure Speech — 계정이 있으면(월 50만 자 무료) 한국어 여성 음성이 여럿입니다")
+    for v in AZURE_VOICES:
+        print("   " + v)
+    print("   사용: --engine azure --azure-key <키>  (또는 환경변수 AZURE_SPEECH_KEY)")
+    print("\n■ edge-tts 신경망 음성 — 계정 없이 바로 쓸 수 있습니다")
     for v, desc in EDGE_VOICES:
         print("   %-36s %s" % (v, desc))
     try:
@@ -461,8 +576,13 @@ def main():
     ap.add_argument("--gender", choices=["Female", "Male", "all"], default="Female",
                     help="맛보기로 만들 목소리 성별. 기본 Female")
     ap.add_argument("--max-samples", type=int, default=4, help="맛보기 개수. 기본 4")
-    ap.add_argument("--engine", choices=["edge", "say"], default=None, help="음성 엔진")
+    ap.add_argument("--engine", choices=["edge", "azure", "say"], default=None, help="음성 엔진")
+    ap.add_argument("--azure-key", default=os.environ.get("AZURE_SPEECH_KEY"),
+                    help="Azure Speech 키 (환경변수 AZURE_SPEECH_KEY 로도 됩니다)")
+    ap.add_argument("--azure-region", default=os.environ.get("AZURE_SPEECH_REGION", "koreacentral"),
+                    help="Azure 지역. 기본 koreacentral")
     ap.add_argument("--rate", default=None, help="말 빠르기 (예: +10%%)")
+    ap.add_argument("--pitch", default=None, help="목소리 높낮이 (예: -15Hz)")
     ap.add_argument("--gap", type=float, default=5.0, help="생각할 시간(초). 기본 5")
     ap.add_argument("--group", type=int, default=10, help="한 파일에 담을 문항 수. 기본 10")
     ap.add_argument("--jobs", type=int, default=4, help="동시 합성 수. 기본 4")
@@ -477,16 +597,23 @@ def main():
         print("      곡 정보(제목·앨범)가 붙지 않습니다. 원하시면: brew install ffmpeg\n")
 
     if args.engine is None:
-        try:
-            import edge_tts  # noqa
-            args.engine = "edge"
-        except ImportError:
-            args.engine = "say" if have("say") else None
+        if args.azure_key:
+            args.engine = "azure"
+        else:
+            try:
+                import edge_tts  # noqa
+                args.engine = "edge"
+            except ImportError:
+                args.engine = "say" if have("say") else None
         if args.engine is None:
             sys.exit("음성 엔진이 없습니다.  pip3 install edge-tts  를 먼저 실행해 주세요.")
 
-    if args.engine == "edge" and args.voice is None and not args.sample:
+    if args.engine == "azure" and not args.azure_key:
+        sys.exit("Azure 를 쓰려면 키가 필요합니다.  --azure-key 또는 환경변수 AZURE_SPEECH_KEY")
+    if args.engine in ("edge", "azure") and args.voice is None and not args.sample:
         args.voice = DEFAULT_VOICE
+    if args.pitch and args.voice and "@" not in str(args.voice):
+        args.voice = "%s@%s" % (args.voice, args.pitch)
 
     init_abbr()
 

@@ -143,38 +143,39 @@ python3 tools/make_audio.py --all              # 5과목 전부
 | 인터넷 | 필요 | 불필요 |
 | 비용·계정 | 무료, 키 불필요 | 불필요 |
 
-한국어 신경망 음성을 고를 수 있습니다. `--sample` 은 **여성 음성 4개**를 먼저 만들어 줍니다.
-
-| 여성 | 남성 |
-|---|---|
-| `ko-KR-SunHiNeural` (기본값, 차분함) | `ko-KR-InJoonNeural` (낮고 안정적) |
-| `ko-KR-JiMinNeural` (밝고 또렷함) | `ko-KR-HyunsuMultilingualNeural` |
-| `ko-KR-SeoHyeonNeural` (부드러움) | `ko-KR-BongJinNeural` |
-| `ko-KR-YuJinNeural` (발랄함) | `ko-KR-GookMinNeural` |
-
-`--gender Male` 또는 `--gender all` 로 맛보기 대상을 바꿀 수 있습니다.
-실제 목록은 실행할 때 서버에서 받아 오므로 위 표와 다를 수 있습니다.
-
-특정 목소리만 비교하고 싶다면 쉼표로 나열하고, 실제로 만들 과목의 문항으로 들어 보세요.
+**쓸 수 있는 한국어 목소리는 엔진에 따라 다릅니다.** 먼저 확인하세요.
 
 ```bash
-python3 tools/make_audio.py --sample --subject 2 \
-  --voice ko-KR-JiMinNeural,ko-KR-SeoHyeonNeural,ko-KR-YuJinNeural
+python3 tools/make_audio.py --list-voices
 ```
 
-**과목마다 다른 목소리를 쓸 수 있습니다.** 과목별로 목소리를 바꾸면 지금 무엇을 듣고 있는지
-귀로 바로 구분됩니다.
+없는 이름을 주면 0바이트 파일이 만들어집니다. 그래서 본 작업을 시작하기 전에
+목소리 이름을 검사하고, 없으면 실제 목록을 보여 주며 멈춥니다.
 
-| 과목 | 대상 문항 | 예상 길이 | 파일 | 용량 |
-|---|---|---|---|---|
-| 1 소프트웨어 설계 | 117 (2개 제외) | 약 2시간 3분 | 12 | 43 MB |
-| 2 소프트웨어 개발 | 112 (6개 제외) | 약 2시간 0분 | 12 | 42 MB |
-| 3 데이터베이스 구축 | 116 (20개 제외) | 약 2시간 7분 | 12 | 45 MB |
-| 4 프로그래밍 언어 활용 | 103 (13개 제외) | 약 1시간 45분 | 11 | 37 MB |
-| 5 정보시스템 구축관리 | 122 (제외 없음) | 약 2시간 6분 | 13 | 44 MB |
+| 엔진 | 한국어 목소리 | 준비물 | 비용 |
+|---|---|---|---|
+| `edge` (기본) | 목록이 짧습니다. `--list-voices` 로 확인 | `pip3 install edge-tts` | 무료·계정 불필요 |
+| `azure` | JiMin·SeoHyeon·YuJin·SoonBok 등 여성 여럿 | Azure 계정 + 키 | 월 50만 자까지 무료 |
+| `say` | 유나 등 macOS 설치 음성 | macOS | 무료·인터넷 불필요 |
 
-제외되는 것은 코드·SQL·트리가 든 문항입니다. 3과목이 20개로 가장 많은데,
-SQL 결과 예측형과 관계대수 판별형이 화면을 봐야 풀리는 문항이기 때문입니다.
+5과목 전체 낭독이 약 17만 자이므로 **Azure 무료 한도(월 50만 자) 안에 전부 들어갑니다.**
+
+```bash
+export AZURE_SPEECH_KEY=발급받은키
+python3 tools/make_audio.py --subject 2 --engine azure --voice ko-KR-JiMinNeural
+```
+
+**목소리가 하나뿐이어도 느낌을 바꿀 수 있습니다**
+
+높낮이와 빠르기를 `이름@높낮이@빠르기` 로 지정합니다. 과목마다 다르게 주면 귀로 구분됩니다.
+
+```bash
+python3 tools/make_audio.py --subject 2 --voice ko-KR-SunHiNeural@-15Hz
+python3 tools/make_audio.py --subject 3 --voice ko-KR-SunHiNeural@+15Hz
+python3 tools/make_audio.py --subject 4 --voice ko-KR-SunHiNeural@-8Hz@-8%
+```
+
+`--sample` 은 쓸 수 있는 목소리가 적으면 이 변형들을 대신 만들어 비교하게 해 줍니다.
 
 **끊어 읽기**
 
