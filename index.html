@@ -94,6 +94,8 @@ h1 em{font-style:normal;color:var(--blue)}
 .tag.t4{background:var(--teal-soft);color:var(--teal)}
 .qtext{font-size:17px;font-weight:700;line-height:1.65;margin:14px 0 4px;white-space:pre-wrap}
 .qtext code,pre.code{font-family:var(--mono)}
+/* 코드·트리·표가 들어간 지문은 고정폭 글꼴로 — 비례폭이면 자릿수가 어긋나 읽을 수 없습니다. */
+.qtext.mono,.rev .rq.mono{font-family:var(--mono);font-size:14.5px;font-weight:600;line-height:1.55;overflow-x:auto}
 .opts{display:grid;gap:8px;margin-top:14px}
 .opt{display:flex;gap:11px;align-items:flex-start;text-align:left;border:1px solid var(--line);background:#FCFDFE;border-radius:9px;padding:12px 13px;font-size:14.5px;line-height:1.55;transition:.1s;width:100%}
 .opt:hover{border-color:var(--blue)}
@@ -174,6 +176,40 @@ const Store = (() => {
 
 /* ═══════════════ 상태 ═══════════════ */
 const SUBJ = {1:"소프트웨어 설계",2:"소프트웨어 개발",3:"데이터베이스 구축",4:"프로그래밍 언어 활용",5:"정보시스템 구축관리"};
+
+/* 공식 출제기준(Q-Net) 주요항목 → 세부항목. 각 문항의 k 필드가 이 코드를 가리킵니다.
+   "과목-주요항목-세부항목" 형식이며 통계 화면의 '출제기준 영역별 진단'에 사용됩니다. */
+const KMAP = {
+  "1-1-1":["요구사항 확인","현행 시스템 분석"],        "1-1-2":["요구사항 확인","요구사항 확인"],
+  "1-1-3":["요구사항 확인","분석모델 확인"],          "1-2-1":["화면 설계","UI 요구사항 확인"],
+  "1-2-2":["화면 설계","UI 설계"],                    "1-3-1":["애플리케이션 설계","공통 모듈 설계"],
+  "1-3-2":["애플리케이션 설계","객체지향 설계"],      "1-4-1":["인터페이스 설계","인터페이스 요구사항 확인"],
+  "1-4-2":["인터페이스 설계","인터페이스 대상 식별"], "1-4-3":["인터페이스 설계","인터페이스 상세 설계"],
+  "2-1-1":["데이터 입출력 구현","자료구조"],          "2-1-2":["데이터 입출력 구현","데이터 조작 프로시저 작성"],
+  "2-1-3":["데이터 입출력 구현","데이터 조작 프로시저 최적화"], "2-2-1":["통합 구현","모듈 구현"],
+  "2-2-2":["통합 구현","통합 구현 관리"],             "2-3-1":["제품소프트웨어 패키징","패키징"],
+  "2-3-2":["제품소프트웨어 패키징","매뉴얼 작성"],    "2-3-3":["제품소프트웨어 패키징","버전관리"],
+  "2-4-1":["애플리케이션 테스트 관리","테스트케이스 설계"], "2-4-2":["애플리케이션 테스트 관리","통합 테스트"],
+  "2-4-3":["애플리케이션 테스트 관리","성능 개선"],   "2-5-1":["인터페이스 구현","설계 확인"],
+  "2-5-2":["인터페이스 구현","기능 구현"],            "2-5-3":["인터페이스 구현","구현 검증"],
+  "3-1-1":["SQL 응용","절차형 SQL 작성"],             "3-1-2":["SQL 응용","응용 SQL 작성"],
+  "3-2-1":["SQL 활용","기본 SQL 작성"],               "3-2-2":["SQL 활용","고급 SQL 작성"],
+  "3-3-1":["논리 데이터베이스 설계","관계데이터베이스 모델"], "3-3-2":["논리 데이터베이스 설계","데이터모델링 및 설계"],
+  "3-4-1":["물리 데이터베이스 설계","물리요소 조사 분석"],    "3-4-2":["물리 데이터베이스 설계","물리속성 설계"],
+  "3-4-3":["물리 데이터베이스 설계","물리 데이터베이스 모델링"], "3-4-4":["물리 데이터베이스 설계","반정규화"],
+  "3-4-5":["물리 데이터베이스 설계","물리데이터 모델 품질검토"], "3-5-1":["데이터 전환","전환 기술"],
+  "3-5-2":["데이터 전환","전환 수행"],                "3-5-3":["데이터 전환","데이터 정제"],
+  "4-1-1":["서버프로그램 구현","개발환경 구축"],      "4-1-2":["서버프로그램 구현","서버 프로그램 구현"],
+  "4-1-3":["서버프로그램 구현","배치 프로그램 구현"], "4-2-1":["프로그래밍 언어 활용","기본문법 활용"],
+  "4-2-2":["프로그래밍 언어 활용","언어특성 활용"],   "4-2-3":["프로그래밍 언어 활용","라이브러리 활용"],
+  "4-3-1":["응용 SW 기초 기술 활용","운영체제 기초 활용"], "4-3-2":["응용 SW 기초 기술 활용","네트워크 기초 활용"],
+  "4-3-3":["응용 SW 기초 기술 활용","기본 개발환경 구축"],
+  "5-1-1":["소프트웨어개발 방법론 활용","방법론 선정"],       "5-1-2":["소프트웨어개발 방법론 활용","방법론 테일러링"],
+  "5-2-1":["IT프로젝트 정보시스템 구축관리","네트워크 구축 관리"], "5-2-2":["IT프로젝트 정보시스템 구축관리","SW 구축 관리"],
+  "5-2-3":["IT프로젝트 정보시스템 구축관리","HW 구축 관리"],  "5-2-4":["IT프로젝트 정보시스템 구축관리","DB 구축 관리"],
+  "5-3-1":["소프트웨어 개발 보안 구축","SW개발 보안 설계"],   "5-3-2":["소프트웨어 개발 보안 구축","SW개발 보안 구현"],
+  "5-4-1":["시스템 보안 구축","시스템 보안 설계"],            "5-4-2":["시스템 보안 구축","시스템 보안 구현"]
+};
 const INTERVAL = [0,1,2,4,8,16];           // Leitner 박스별 다음 복습까지 일수
 const BANK = window.QUESTIONS || [];
 const byId = Object.fromEntries(BANK.map(q => [q.id, q]));
@@ -193,6 +229,9 @@ const addDays = (k, n) => { const d = new Date(k + "T00:00:00"); d.setDate(d.get
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const shuffle = a => { a = a.slice(); for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
 const stat = id => DB.stats[id] || (DB.stats[id] = { seen:0, right:0, wrong:0, box:0, due:todayKey(), last:null });
+/* 지문에 코드·ASCII 트리·표가 들어 있으면 고정폭으로 렌더해야 합니다.
+   판별: 줄바꿈이 있고, 들여쓰기(연속 공백 2칸 이상)나 코드 기호가 보이는 경우. */
+const isMono = s => /\n/.test(s) && (/\n\s{2,}\S/.test(s) || /[{};]|\bSELECT\b|\bprintf\b|\bdef\b|\bint\b/.test(s));
 
 /* ═══════════════ 파생 지표 ═══════════════ */
 function dueList(){
@@ -451,8 +490,9 @@ function viewQuiz(){
         <span class="tag">${q.s}과목 ${SUBJ[q.s]}</span>
         <span class="tag t2">${esc(q.t)}</span>
         <span class="tag ${q.f==="A"?"t3":"t4"}">빈도 ${q.f}</span>
+        ${q.k && KMAP[q.k] ? `<span class="tag t4">${esc(KMAP[q.k][1])}</span>` : ""}
       </div>
-      <div class="qtext">${esc(q.q)}</div>
+      <div class="qtext${isMono(q.q)?" mono":""}">${esc(q.q)}</div>
       <div class="opts">${opts}</div>
       ${guessBtn ? `<div class="row" style="margin-top:12px">${guessBtn}</div>` : ""}
       ${expl}
@@ -495,7 +535,7 @@ function viewResult(){
     else picked = `<div class="rw">선택 ${"①②③④"[q.o.indexOf(sel)]} ${esc(q.c[sel])}</div>`;
     return `<div class="rev">
       <div class="meta"><span class="tag">${q.s}과목</span><span class="tag t2">${esc(q.t)}</span>${badge}</div>
-      <div class="rq">${esc(q.q)}</div>
+      <div class="rq${isMono(q.q)?" mono":""}">${esc(q.q)}</div>
       <div class="ra">정답 ${"①②③④"[q.o.indexOf(q.a)]} ${esc(q.c[q.a])}</div>
       ${picked}
       <div class="re">${esc(q.e)}</div></div>`;
@@ -541,6 +581,28 @@ function viewStats(){
       return `<tr><td><b>${t.s}과목</b> ${esc(t.t)}</td><td class="num">${t.right}/${t.seen}</td>
         <td style="width:34%"><div class="bar"><i style="width:${p}%;background:${p>=60?"var(--teal)":p>=40?"var(--amber)":"var(--mag)"}"></i></div></td></tr>`; }).join("");
 
+  /* 출제기준 영역별 진단 — 공식 출제기준의 주요항목 단위로 학습 상태를 집계합니다.
+     토픽은 앱이 정한 학습 단위지만, 이 표는 실제 시험 범위 그 자체를 기준으로 합니다. */
+  const areas = {};
+  BANK.forEach(q => {
+    if (!q.k || !KMAP[q.k]) return;
+    const key = q.s + "|" + KMAP[q.k][0];
+    const a = areas[key] || (areas[key] = { s:q.s, name:KMAP[q.k][0], total:0, touched:0, seen:0, right:0 });
+    a.total++;
+    const st = DB.stats[q.id];
+    if (st && st.seen){ a.touched++; a.seen += st.seen; a.right += st.right; }
+  });
+  const ar = Object.values(areas).sort((x,y) => x.s - y.s || y.total - x.total).map(a => {
+    const cov = Math.round(a.touched / a.total * 100);
+    const acc = a.seen ? Math.round(a.right / a.seen * 100) : null;
+    const col = acc === null ? "var(--line)" : acc >= 60 ? "var(--teal)" : acc >= 40 ? "var(--amber)" : "var(--mag)";
+    return `<tr><td><b>${a.s}과목</b> ${esc(a.name)}</td>
+      <td class="num">${a.touched}/${a.total}</td>
+      <td style="width:26%"><div class="bar"><i style="width:${cov}%;background:var(--blue)"></i></div></td>
+      <td class="num" style="color:${col}">${acc === null ? "–" : acc + "%"}</td></tr>`;
+  }).join("");
+  const untouched = Object.values(areas).filter(a => a.touched === 0);
+
   const hist = DB.sessions.slice(0,12).map(s =>
     `<tr><td>${s.date}</td><td>${esc(s.mode)}</td><td class="num">${s.correct}/${s.total}</td>
      <td class="num">${Math.round(s.correct/s.total*100)}%</td>
@@ -556,6 +618,13 @@ function viewStats(){
 
   <div class="card"><h2>약한 토픽</h2>
     ${tr ? `<table>${tr}</table>` : `<div class="empty">같은 토픽을 2회 이상 풀면 표시됩니다.</div>`}
+  </div>
+
+  <div class="card"><h2>출제기준 영역별 진단</h2>
+    <table><tr><th>주요항목</th><th style="text-align:right">진도</th><th>커버리지</th><th style="text-align:right">정답률</th></tr>${ar}</table>
+    <div class="note">공식 출제기준(Q-Net)의 주요항목 단위입니다. '진도'는 해당 영역에서 한 번이라도 푼 문항 수,
+    '정답률'은 그중 확신을 갖고 맞힌 비율입니다.
+    ${untouched.length ? `아직 손대지 않은 영역이 ${untouched.length}개 있습니다 — ${untouched.slice(0,3).map(a=>a.s+"과목 "+esc(a.name)).join(", ")}${untouched.length>3?" 외":""}.` : "모든 영역을 한 번 이상 학습했습니다."}</div>
   </div>
 
   <div class="card"><h2>최근 학습 기록</h2>
