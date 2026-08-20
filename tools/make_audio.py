@@ -281,6 +281,26 @@ def have(cmd):
 HAS_FFMPEG = False
 SILENCE_UNIT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "silence-0.5s.mp3")
 
+# ── 음질 설정 ────────────────────────────────────────────────
+# 기본값은 edge-tts 가 내보내는 규격 그대로입니다.
+#   edge-tts 는 출력 형식이 audio-24khz-48kbitrate-mono-mp3 로 고정돼 있어
+#   (edge_tts/communicate.py 의 outputFormat) 재인코딩으로는 음질이 좋아지지 않습니다.
+# --hq 는 Azure Speech(--engine azure, 키 필요) 나 macOS say 에서만 뜻이 있습니다.
+BITRATE    = "48k"
+SAMPLERATE = "24000"
+AZURE_FMT  = "audio-24khz-48kbitrate-mono-mp3"
+SAY_FMT    = "LEF32@22050"
+
+def set_hq(on):
+    """--hq: 48kHz 128kbps 로 올립니다. 원본을 그만큼 뽑아내는 엔진에서만 효과가 있습니다."""
+    global BITRATE, SAMPLERATE, AZURE_FMT, SAY_FMT
+    if not on:
+        return
+    BITRATE, SAMPLERATE = "128k", "48000"
+    AZURE_FMT = "audio-48khz-192kbitrate-mono-mp3"
+    SAY_FMT   = "LEF32@48000"
+
+
 def ffmpeg(args, **kw):
     return subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"] + args,
                           check=True, **kw)
@@ -290,8 +310,8 @@ def make_silence(path, seconds):
     if os.path.exists(path):
         return path
     if HAS_FFMPEG:
-        ffmpeg(["-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
-                "-t", "%.2f" % seconds, "-c:a", "libmp3lame", "-b:a", "48k", path])
+        ffmpeg(["-f", "lavfi", "-i", "anullsrc=r=%s:cl=mono" % SAMPLERATE,
+                "-t", "%.2f" % seconds, "-c:a", "libmp3lame", "-b:a", BITRATE, path])
         return path
     if not os.path.exists(SILENCE_UNIT):
         sys.exit("무음 파일(tools/silence-0.5s.mp3)이 없습니다. ffmpeg 을 설치해 주세요.")
@@ -312,7 +332,7 @@ def concat_mp3(seq, out, meta):
         for k, v in meta.items():
             margs += ["-metadata", "%s=%s" % (k, v)]
         ffmpeg(["-f", "concat", "-safe", "0", "-i", lst,
-                "-c:a", "libmp3lame", "-b:a", "48k", "-ac", "1", "-ar", "24000"] + margs + [out])
+                "-c:a", "libmp3lame", "-b:a", BITRATE, "-ac", "1", "-ar", SAMPLERATE] + margs + [out])
         os.remove(lst)
     else:
         with open(out, "wb") as w:
@@ -405,7 +425,7 @@ def azure_say(text, out, voice, rate, key, region):
         data=body,
         headers={"Ocp-Apim-Subscription-Key": key,
                  "Content-Type": "application/ssml+xml",
-                 "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
+                 "X-Microsoft-OutputFormat": AZURE_FMT,
                  "User-Agent": "jeongcheogi-audio"})
     with urllib.request.urlopen(req, timeout=60) as resp:
         data = resp.read()
@@ -418,12 +438,12 @@ def mac_say(text, out, voice):
     if not HAS_FFMPEG:
         sys.exit("macOS 내장 음성(say)으로 만들려면 ffmpeg 이 필요합니다.  brew install ffmpeg")
     aiff = out + ".aiff"
-    cmd = ["say", "-o", aiff, "--data-format=LEF32@22050"]
+    cmd = ["say", "-o", aiff, "--data-format=" + SAY_FMT]
     if voice:
         cmd += ["-v", voice]
     cmd += [text]
     subprocess.run(cmd, check=True)
-    ffmpeg(["-i", aiff, "-c:a", "libmp3lame", "-b:a", "48k", "-ac", "1", "-ar", "24000", out])
+    ffmpeg(["-i", aiff, "-c:a", "libmp3lame", "-b:a", BITRATE, "-ac", "1", "-ar", SAMPLERATE, out])
     os.remove(aiff)
 
 # ─────────────────────────────────────────────────────────────
@@ -449,6 +469,10 @@ def build_manifest():
                 except Exception:
                     pass
             m = re.search(r"_(\d+)-(\d+)\.mp3$", f)
+            size = os.path.getsize(os.path.join(d, f))
+            if not sec:
+                # CBR 이므로 파일 크기로 길이를 구할 수 있습니다 (48kbps = 6000 bytes/초).
+                sec = round(size / (int(BITRATE.rstrip("k")) * 1000 / 8), 3)
             tracks.append({
                 "s": s,
                 "subject": SUBJ[s],
@@ -457,7 +481,9 @@ def build_manifest():
                 "from": int(m.group(1)) if m else 0,
                 "to": int(m.group(2)) if m else 0,
                 "sec": sec,
-                "bytes": os.path.getsize(os.path.join(d, f)),
+                "bytes": size,
+                # 릴리스 자산용 ASCII 이름. GitHub Releases 는 한글 파일명을 보존하지 않습니다.
+                "rfile": "s%d_%s" % (s, f.split("과목_", 1)[1]),
             })
     return tracks
 
@@ -802,6 +828,9 @@ def main():
                     help="만든 뒤 과목별 zip 으로 묶습니다 (폰·클라우드로 옮길 때)")
     ap.add_argument("--copy-to", default=None,
                     help="만든 뒤 이 폴더로 복사합니다 (예: ~/Library/Mobile Documents/com~apple~CloudDocs/정처기음성)")
+    ap.add_argument("--hq", action="store_true",
+                    help="48kHz 128kbps 로 만들기. Azure(--engine azure) 나 say 에서만 효과가 있습니다. "
+                         "edge-tts 는 24kHz 48kbps 고정입니다")
     ap.add_argument("--keep-tmp", action="store_true", help="중간 파일 남기기")
     args = ap.parse_args()
 
@@ -825,6 +854,12 @@ def main():
 
     if args.engine == "azure" and not args.azure_key:
         sys.exit("Azure 를 쓰려면 키가 필요합니다.  --azure-key 또는 환경변수 AZURE_SPEECH_KEY")
+
+    set_hq(args.hq)
+    if args.hq and args.engine == "edge":
+        print("알림: edge-tts 는 출력이 24kHz 48kbps 로 고정돼 있습니다 (edge_tts 소스에서 확인).")
+        print("      --hq 로 다시 인코딩해도 음질은 좋아지지 않고 파일만 커집니다.")
+        print("      음질을 올리려면 --engine azure (Azure Speech 키 필요) 를 쓰십시오.\n")
     if args.engine in ("edge", "azure") and args.voice is None and not args.sample:
         args.voice = DEFAULT_VOICE
     if args.pitch and args.voice and "@" not in str(args.voice):

@@ -858,7 +858,10 @@ function viewListen(){
       <div class="chips" id="lsvoices">${voiceChips()}</div>
       <div class="note">고르면 바로 미리 들려 드립니다. 이름에 <b>Google</b>이나 <b>Siri</b>가 들어간 음성이 대체로 가장 자연스럽습니다.
       목록이 빈약하다면 기기에서 고품질 음성을 내려받아야 합니다 —
-      macOS·iOS는 <b>설정 → 손쉬운 사용 → 말하기(음성 콘텐츠) → 시스템 음성 → 한국어</b>에서 '유나(고급)' 등을 추가할 수 있습니다.</div>
+      macOS·iOS는 <b>설정 → 손쉬운 사용 → 말하기(음성 콘텐츠) → 시스템 음성 → 한국어</b>에서 '유나(고급)' 등을 추가할 수 있습니다.
+      <br>이 듣기 모드는 <b>브라우저 내장 음성</b>으로 그때그때 읽어 주는 것이라,
+      미리 만들어 둔 MP3(홈 → 🎵 음성 듣기)와는 목소리도 음질도 다릅니다.
+      음질이 아쉬우면 MP3 쪽을 쓰십시오.</div>
     </div>
 
     <div class="card"><h2>재생 설정</h2>
@@ -884,14 +887,22 @@ document.addEventListener("keydown", e => {
    자면서 듣기 위한 슬립 타이머와 이어듣기를 갖췄습니다. */
 let AP = { list:[], i:-1, el:null, timer:null, endAt:0, base:"", loaded:false, err:"" };
 
+/* 음성 파일(60트랙 188MB)은 저장소에 올리지 않고 GitHub Releases 로 배포합니다.
+   저장소·GitHub Pages 용량을 쓰지 않고, 구간 탐색(Range 요청)도 그대로 동작합니다.
+   태그를 새로 만들면 아래 주소의 audio-v1 부분만 바꾸면 됩니다. */
+const AP_RELEASE = "https://github.com/jihoonhappy/jeongcheogi/releases/download/audio-v1/";
+
 const apBase = () => (DB.pref && DB.pref.audioBase) || "audio/";
+const apIsRemote = b => /^https?:/i.test(b || apBase());
 
 /* 트랙 목록(audio-manifest.json)을 읽습니다. make_audio.py --manifest 로 만듭니다. */
 async function apLoad(){
   AP.err = ""; AP.loaded = false;
   const cands = ["audio-manifest.json", "audio/manifest.json"];
   const b = apBase();
-  if (/^https?:/i.test(b)) cands.unshift(b.replace(/\/?$/, "/") + "manifest.json");
+  /* 원격 목록은 마지막에 시도합니다. 사이트 안의 audio-manifest.json 이 정본이고,
+     릴리스 주소로 목록을 먼저 찾으면 404 + CORS 오류만 남기기 때문입니다. */
+  if (/^https?:/i.test(b)) cands.push(b.replace(/\/?$/, "/") + "manifest.json");
   for (const u of cands){
     try {
       const r = await fetch(u, { cache: "no-store" });
@@ -908,7 +919,14 @@ async function apLoad(){
   if (view === "audio") render();
 }
 
-const apUrl = t => apBase().replace(/\/?$/, "/") + t.file.split("/").map(encodeURIComponent).join("/");
+/* 릴리스 자산에는 폴더가 없고 한글 파일명이 그대로 보존되지 않으므로
+   원격일 때는 manifest 의 rfile(예: s1_01_001-010.mp3)을 씁니다. */
+const apUrl = t => {
+  const b = apBase().replace(/\/?$/, "/");
+  return apIsRemote(b)
+    ? b + encodeURIComponent(t.rfile || t.file.split("/").pop())
+    : b + t.file.split("/").map(encodeURIComponent).join("/");
+};
 const apFmt = s => { s = Math.max(0, Math.round(s||0));
   const m = Math.floor(s/60), x = s%60; return m + ":" + String(x).padStart(2,"0"); };
 
@@ -919,10 +937,32 @@ function apEl(){
   a.addEventListener("timeupdate", () => { apSave(); apPaint(); });
   a.addEventListener("ended", () => apNext());
   a.addEventListener("play", apPaint);
+  a.addEventListener("playing", () => { if (AP.err){ AP.err = ""; apPaint(); } });
   a.addEventListener("pause", apPaint);
-  a.addEventListener("error", () => { AP.err = "이 파일을 재생할 수 없습니다. 경로를 확인해 주세요."; apPaint(); });
+  a.addEventListener("error", apFail);
   AP.el = a;
   return a;
+}
+
+/* 재생 실패 처리.
+   사이트에 audio/ 폴더가 없으면(= 저장소에 올리지 않은 경우) 한 번만 릴리스 주소로
+   자동 전환해 다시 시도합니다. 그래도 안 되면 원인을 화면에 적습니다. */
+function apFail(){
+  const a = AP.el, i = AP.i;
+  if (i < 0 || !a) return;
+  if (!apIsRemote() && AP_RELEASE && !AP.fellBack){
+    AP.fellBack = true;
+    DB.pref = DB.pref || {}; DB.pref.audioBase = AP_RELEASE; save();
+    const at = a.currentTime || 0;
+    AP.i = -1; AP.err = "";
+    apPlay(i, at);
+    if (view === "audio") render();
+    return;
+  }
+  AP.err = apIsRemote()
+    ? "이 트랙을 내려받지 못했습니다. 릴리스에 파일이 올라가 있는지, 인터넷이 연결돼 있는지 확인해 주세요."
+    : "이 파일을 재생할 수 없습니다. 경로를 확인해 주세요.";
+  apPaint();
 }
 
 function apPlay(i, seek){
@@ -997,12 +1037,16 @@ function apSleep(min){
   apPaint();
 }
 
+function apUseBase(v){
+  DB.pref = DB.pref || {}; DB.pref.audioBase = (v || "").trim() || "audio/"; save();
+  AP.i = -1; AP.err = ""; AP.fellBack = false;
+  if (AP.el){ AP.el.pause(); AP.el.src = ""; }
+  apLoad();
+  if (view === "audio") render();
+}
 function apSetBase(){
   const v = prompt("음성 파일 위치를 입력하세요.\n\n같은 사이트에 올렸다면 audio/ 그대로 두시면 됩니다.\nGitHub Releases 등 다른 곳이면 그 주소를 넣으세요.", apBase());
-  if (v === null) return;
-  DB.pref = DB.pref || {}; DB.pref.audioBase = v.trim() || "audio/"; save();
-  AP.i = -1; if (AP.el){ AP.el.pause(); AP.el.src = ""; }
-  apLoad();
+  if (v !== null) apUseBase(v);
 }
 
 function apPaint(){
@@ -1069,12 +1113,18 @@ function viewAudio(){
         <div class="note">음성 파일을 아직 만들지 않으셨다면 저장소에서 아래를 실행하세요.
         <br><code>python3 tools/make_audio.py --all --voice ko-KR-SunHiNeural@-15Hz</code>
         <br>만든 뒤 <code>python3 tools/make_audio.py --manifest</code> 로 트랙 목록을 만들고,
-        <code>audio/</code> 폴더와 <code>audio-manifest.json</code> 을 사이트에 올리면 여기서 바로 재생됩니다.</div>`}
+        <code>bash tools/upload_audio_release.sh</code> 로 GitHub Releases 에 올리면 여기서 바로 재생됩니다.</div>`}
       <div class="row" style="margin-top:10px">
-        <button class="btn btn-ghost" onclick="apSetBase()">파일 위치 바꾸기</button>
+        <button class="btn ${apIsRemote()?"":"btn-ghost"}" onclick="apUseBase(AP_RELEASE)">☁️ 릴리스에서 듣기</button>
+        <button class="btn ${apIsRemote()?"btn-ghost":""}" onclick="apUseBase('audio/')">💾 내 기기·사이트에서 듣기</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn btn-ghost" onclick="apSetBase()">주소 직접 입력</button>
         <button class="btn btn-ghost" onclick="apLoad()">목록 새로고침</button>
       </div>
-      <div class="note">현재 위치 <code>${esc(apBase())}</code></div>
+      <div class="note">현재 위치 <code>${esc(apBase())}</code>
+      ${apIsRemote() ? "<br>인터넷에서 바로 받아 재생합니다. 데이터 사용량은 10분 트랙 하나에 약 3.5MB입니다."
+                     : "<br>사이트에 <code>audio/</code> 폴더가 없으면 자동으로 릴리스 주소로 넘어갑니다."}</div>
     </div>`;
 }
 
