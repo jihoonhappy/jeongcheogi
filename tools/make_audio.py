@@ -79,13 +79,16 @@ def parse_voice(spec):
         txt = txt.split("_", 1)[1]
     if txt.lower().endswith(".mp3"):
         txt = txt[:-4]
+    txt = re.sub(r"_?영문그대로", "", txt)   # 샘플 파일명에 붙는 표시
+
     if "@" not in txt and "_" in txt:
         # ko-KR-SunHiNeural_-15Hz / ..._p15Hz / ..._-8Hz_-8pct
         head, *tail = txt.split("_")
         conv = []
         for t in tail:
             t2 = t.replace("pct", "%")
-            if t2.startswith("p") and _PITCH_RE.match(t2[1:]):
+            # 파일명에서는 '+' 를 쓸 수 없어 p 로 적습니다: p22Hz → +22Hz, p6pct → +6%
+            if t2.startswith("p") and (_PITCH_RE.match(t2[1:]) or _RATE_RE.match(t2[1:])):
                 t2 = "+" + t2[1:]
             if _PITCH_RE.match(t2) or _RATE_RE.match(t2):
                 conv.append(t2)
@@ -200,19 +203,39 @@ def sino(n):
 def beon(n):
     return sino(n) + "번"
 
+SAY_EN = False          # True 면 영문을 한글로 바꾸지 않고 그대로 읽힙니다 (다국어 음성용)
+
+def set_say_mode(voice, mode):
+    """영문 처리 방식을 정합니다.
+       ko   — 영문 괄호는 빼고 약어는 한글 발음으로 (한국어 전용 음성용)
+       keep — 영문을 그대로 두어 음성이 영어로 읽게 함 (다국어 음성용)
+       auto — 목소리 이름에 Multilingual 이 있으면 keep, 아니면 ko"""
+    global SAY_EN
+    if mode == "keep":
+        SAY_EN = True
+    elif mode == "ko":
+        SAY_EN = False
+    else:
+        name = parse_voice(voice)[0] if voice else ""
+        SAY_EN = "Multilingual" in str(name)
+    return SAY_EN
+
 def say_text(s):
     t = str(s)
     t = t.replace("V(G)", "브이지")
     # 한글 뒤 괄호 안이 영문뿐이면 통째로 뺍니다: 캡슐화(Encapsulation) → 캡슐화
+    # SAY_EN 이면 괄호만 없애고 영문은 남겨 둡니다: 캡슐화, Encapsulation,
     t = re.sub(r"\(([^()]*)\)",
-               lambda m: "" if re.fullmatch(r"[A-Za-z0-9 .,'’/&+\-_]+", m.group(1)) else " " + m.group(1) + " ",
+               lambda m: ((", " + m.group(1) + ", ") if SAY_EN else "")
+                         if re.fullmatch(r"[A-Za-z0-9 .,'’/&+\-_]+", m.group(1))
+                         else " " + m.group(1) + " ",
                t)
     t = re.sub(r"[→⇒]", ", 그다음 ", t).replace("↔", ", 그리고 ")
     t = t.replace("&", " 앤 ").replace("×", " 곱하기 ").replace("÷", " 나누기 ")
     for i, ch in enumerate("①②③④"):
         t = t.replace(ch, " " + beon(i + 1) + " ")
     t = re.sub(r"\n+", ". ", t)
-    if ABBR_RE:
+    if ABBR_RE and not SAY_EN:
         t = ABBR_RE.sub(lambda m: ABBR.get(m.group(0), m.group(0)), t)
     # 숫자 + 번/과목은 한자어로 읽어야 합니다 (1번 → 한 번(X) / 일번(O))
     t = re.sub(r"(?<![0-9.])([0-9]{1,3})번(?![0-9])", lambda m: beon(m.group(1)), t)
@@ -643,7 +666,7 @@ async def make_samples(args):
     sub = args.subject or 1
     bank = [q for q in load_bank() if q["s"] == sub and not is_mono(q["q"])]
     q = bank[0]
-    text = " ".join(t for t, _ in segments_for(q, 1, 0))[:600]
+    sample_text = lambda: " ".join(t for t, _ in segments_for(q, 1, 0))[:600]
     outs = []
     if args.voice:
         # --voice 에 쉼표로 여러 개를 주면 그 목소리들만 비교해 만듭니다.
@@ -683,6 +706,10 @@ async def make_samples(args):
     desc.update(MULTI_HINT)
     for v in cands:
         name = voice_label(v or "기본").replace(" ", "")
+        en = set_say_mode(v, args.english)      # 목소리마다 영문 처리 방식을 다시 정합니다
+        if en:
+            name += "_영문그대로"
+        text = sample_text()
         out = os.path.join(OUT_ROOT, "샘플_%s.mp3" % name)
         if desc.get(v):
             print("  (%s)" % desc[v])
@@ -758,6 +785,9 @@ def main():
                     help="Azure Speech 키 (환경변수 AZURE_SPEECH_KEY 로도 됩니다)")
     ap.add_argument("--azure-region", default=os.environ.get("AZURE_SPEECH_REGION", "koreacentral"),
                     help="Azure 지역. 기본 koreacentral")
+    ap.add_argument("--english", choices=["auto", "ko", "keep"], default="auto",
+                    help="영문 읽는 방식. auto=다국어 음성이면 영어 그대로, "
+                         "ko=한글 발음으로(SQL→에스큐엘), keep=항상 영어 그대로")
     ap.add_argument("--rate", default=None, help="말 빠르기 (예: +10%%)")
     ap.add_argument("--pitch", default=None, help="목소리 높낮이 (예: -15Hz)")
     ap.add_argument("--gap", type=float, default=5.0, help="생각할 시간(초). 기본 5")
@@ -800,7 +830,13 @@ def main():
     if args.pitch and args.voice and "@" not in str(args.voice):
         args.voice = "%s@%s" % (args.voice, args.pitch)
 
+    # 샘플 파일명을 그대로 붙여넣은 경우, 그 샘플의 영문 처리 방식을 이어받습니다.
+    if args.voice and "영문그대로" in str(args.voice) and args.english == "auto":
+        args.english = "keep"
+
     init_abbr()
+    if set_say_mode(args.voice, args.english):
+        print("영문은 한글로 바꾸지 않고 그대로 읽힙니다 (다국어 음성).")
 
     if args.manifest:
         print("트랙 목록을 만듭니다.")
