@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 *.mp3.aiff
 .DS_Store
+audio_old/

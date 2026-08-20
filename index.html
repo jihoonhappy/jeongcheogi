@@ -1092,7 +1092,10 @@ function header(sub){
   return `<div class="top">
     <div><div class="brand">engineer information processing · written</div>
       <h1>정보처리기사 <em>필기 트레이너</em></h1></div>
-    <div class="streak">🔥 ${streakDays()}일 연속 · 누적 ${totalSolved()}문항</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <a class="streak" style="text-decoration:none" href="gichul.html">기출 트레이너 →</a>
+      <div class="streak">🔥 ${streakDays()}일 연속 · 누적 ${totalSolved()}문항</div>
+    </div>
   </div>${sub||""}`;
 }
 
