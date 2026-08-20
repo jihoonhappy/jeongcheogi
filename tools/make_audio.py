@@ -15,7 +15,7 @@
 사용법
   python3 tools/make_audio.py --list-voices        # 어떤 목소리가 있는지 보기
   python3 tools/make_audio.py --sample             # 여성 목소리 맛보기 만들기
-  python3 tools/make_audio.py --sample --subject 2 --voice ko-KR-JiMinNeural,ko-KR-YuJinNeural
+  python3 tools/make_audio.py --sample --multi     # 다국어 음성까지 포함해 비교
   python3 tools/make_audio.py --subject 1          # 1과목 전체 만들기
   python3 tools/make_audio.py --subject 1 --voice ko-KR-JiMinNeural
   python3 tools/make_audio.py --all                # 5과목 전부
@@ -49,11 +49,24 @@ DEFAULT_VOICE = "ko-KR-SunHiNeural"
 # 목소리가 하나뿐이어도 높낮이·빠르기를 바꾸면 과목마다 다른 느낌을 낼 수 있습니다.
 # "이름@높낮이" 또는 "이름@높낮이@빠르기" 로 씁니다. 예: ko-KR-SunHiNeural@-12Hz
 PITCH_PRESETS = [
-    ("ko-KR-SunHiNeural",          "여성 · 기본"),
-    ("ko-KR-SunHiNeural@-15Hz",    "여성 · 낮고 차분하게 (자기 전에 듣기 좋음)"),
-    ("ko-KR-SunHiNeural@+15Hz",    "여성 · 밝고 또렷하게"),
-    ("ko-KR-SunHiNeural@-8Hz@-8%", "여성 · 낮고 느리게"),
+    ("ko-KR-SunHiNeural",           "여성 · 기본"),
+    ("ko-KR-SunHiNeural@-15Hz",     "여성 · 낮고 차분하게 (자기 전)"),
+    ("ko-KR-SunHiNeural@+15Hz",     "여성 · 밝게"),
+    ("ko-KR-SunHiNeural@+22Hz@+6%", "여성 · 밝고 또렷하게, 살짝 빠르게"),
+    ("ko-KR-SunHiNeural@-8Hz@-8%",  "여성 · 낮고 느리게"),
 ]
+
+# 다국어(Multilingual) 신경망 음성은 한국어도 읽습니다.
+# 한국어 전용 음성이 몇 개 없을 때 목소리 선택지를 넓혀 줍니다.
+# 이름에 Multilingual 이 들어간 것을 서버 목록에서 찾아 쓰므로 목록을 외워 둘 필요가 없습니다.
+MULTI_HINT = {
+    "en-US-AvaMultilingualNeural": "여성 · 밝고 또렷함",
+    "en-US-EmmaMultilingualNeural": "여성 · 부드럽고 따뜻함",
+    "de-DE-SeraphinaMultilingualNeural": "여성 · 차분하고 단정함",
+    "fr-FR-VivienneMultilingualNeural": "여성 · 또렷하고 경쾌함",
+    "en-US-AndrewMultilingualNeural": "남성 · 편안함",
+    "en-US-BrianMultilingualNeural": "남성 · 또렷함",
+}
 
 _PITCH_RE = re.compile(r"^[+-]?\d+(Hz|st)$", re.I)
 _RATE_RE = re.compile(r"^[+-]?\d+(%|pct)$", re.I)
@@ -284,19 +297,43 @@ def concat_mp3(seq, out, meta):
                 with open(p, "rb") as r:
                     shutil.copyfileobj(r, w)
 
-async def edge_ko_voices():
-    """서버에서 실제 쓸 수 있는 한국어 음성 목록을 받아 옵니다. 실패하면 내장 목록을 씁니다."""
+async def edge_all_voices():
     try:
         import edge_tts
-        vs = await edge_tts.list_voices()
-        ko = [(v["ShortName"], v.get("Gender", ""), v.get("FriendlyName", ""))
-              for v in vs if v.get("Locale", "").startswith("ko")]
-        if ko:
-            ko.sort(key=lambda x: (x[1] != "Female", x[0]))
-            return ko
+        return await edge_tts.list_voices()
     except Exception:
-        pass
+        return []
+
+async def edge_ko_voices():
+    """서버에서 실제 쓸 수 있는 한국어 음성 목록을 받아 옵니다. 실패하면 내장 목록을 씁니다."""
+    vs = await edge_all_voices()
+    ko = [(v["ShortName"], v.get("Gender", ""), v.get("FriendlyName", ""))
+          for v in vs if v.get("Locale", "").startswith("ko")]
+    if ko:
+        ko.sort(key=lambda x: (x[1] != "Female", x[0]))
+        return ko
     return EDGE_VOICES
+
+async def edge_multi_voices(gender="Female"):
+    """한국어도 읽는 다국어 음성. 이름에 Multilingual 이 들어간 것들입니다."""
+    vs = await edge_all_voices()
+    out = []
+    for v in vs:
+        n = v.get("ShortName", "")
+        if "Multilingual" not in n:
+            continue
+        if n.startswith("ko-"):
+            continue          # 한국어 전용 목록에서 이미 나옵니다
+        g = v.get("Gender", "")
+        if gender != "all" and g.lower() != gender.lower():
+            continue
+        out.append((n, g, MULTI_HINT.get(n, "")))
+    # 힌트가 있는 것(검증된 것)을 앞으로
+    out.sort(key=lambda x: (not x[2], x[0]))
+    if not out:
+        out = [(k, "Female" if "여성" in v else "Male", v)
+               for k, v in MULTI_HINT.items() if "여성" in v]
+    return out
 
 async def edge_say(text, out, voice, rate):
     import edge_tts
@@ -468,6 +505,8 @@ async def check_voice(args):
     name = parse_voice(args.voice)[0]
     vs = await edge_ko_voices()
     names = [v[0] for v in vs]
+    if "Multilingual" in name:
+        names += [v[0] for v in await edge_multi_voices("all")]
     if name in names:
         return True
     print("✗ '%s' 은(는) 무료 edge-tts 에 없는 목소리입니다." % name)
@@ -475,6 +514,11 @@ async def check_voice(args):
     for v in vs:
         mark = "여성" if (v[1] or "").lower() == "female" else "남성"
         print("     %-36s %s" % (v[0], mark))
+    mv = await edge_multi_voices("all")
+    if mv:
+        print("\n  한국어도 읽는 다국어 음성 (선택지를 넓혀 줍니다):")
+        for v in mv[:8]:
+            print("     %-40s %s" % (v[0], v[2] or v[1]))
     print("\n  JiMin·SeoHyeon·YuJin 같은 이름은 유료 Azure 전용이라 여기서는 쓸 수 없습니다.")
     print("  목소리 수가 적어도 높낮이를 바꾸면 느낌이 달라집니다. 예:")
     print("     --voice ko-KR-SunHiNeural@-15Hz")
@@ -613,15 +657,17 @@ async def make_samples(args):
             f = [v for v in vs if (v[1] or "").lower() == args.gender.lower()]
             vs = f or vs
         cands = [v[0] for v in vs][:args.max_samples]
-        # 한국어 음성이 적으면 높낮이를 바꾼 변형을 함께 만들어 비교하게 합니다.
-        if len(cands) < 3:
-            cands = [c for c, _ in PITCH_PRESETS if parse_voice(c)[0] in names] or cands
+        # 한국어 음성이 적으면 ① 높낮이 변형 ② 한국어도 읽는 다국어 음성 을 함께 만듭니다.
+        if len(cands) < 3 or args.multi:
+            pitch_v = [c for c, _ in PITCH_PRESETS if parse_voice(c)[0] in names]
+            multi_v = [v[0] for v in await edge_multi_voices(args.gender)][:args.max_samples]
+            cands = (pitch_v or cands) + multi_v
     else:
         cands = mac_korean_voices() or [None]
 
     if args.engine == "edge":
         vs = await edge_ko_voices()
-        names = [v[0] for v in vs]
+        names = [v[0] for v in vs] + [v[0] for v in await edge_multi_voices("all")]
         bad = [c for c in cands if parse_voice(c)[0] not in names]
         if bad:
             print("  ※ 유료 Azure 계정이 있으면 --engine azure 로 이 목소리들을 쓸 수 있습니다.")
@@ -634,6 +680,7 @@ async def make_samples(args):
             cands = [c for c, _ in PITCH_PRESETS if parse_voice(c)[0] in names]
     print("  %d과목 %s 문항으로 만듭니다.\n" % (sub, SUBJ[sub]))
     desc = dict(PITCH_PRESETS)
+    desc.update(MULTI_HINT)
     for v in cands:
         name = voice_label(v or "기본").replace(" ", "")
         out = os.path.join(OUT_ROOT, "샘플_%s.mp3" % name)
@@ -704,6 +751,8 @@ def main():
     ap.add_argument("--gender", choices=["Female", "Male", "all"], default="Female",
                     help="맛보기로 만들 목소리 성별. 기본 Female")
     ap.add_argument("--max-samples", type=int, default=4, help="맛보기 개수. 기본 4")
+    ap.add_argument("--multi", action="store_true",
+                    help="한국어도 읽는 다국어 음성까지 맛보기에 포함합니다")
     ap.add_argument("--engine", choices=["edge", "azure", "say"], default=None, help="음성 엔진")
     ap.add_argument("--azure-key", default=os.environ.get("AZURE_SPEECH_KEY"),
                     help="Azure Speech 키 (환경변수 AZURE_SPEECH_KEY 로도 됩니다)")

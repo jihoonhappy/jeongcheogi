@@ -165,17 +165,34 @@ export AZURE_SPEECH_KEY=발급받은키
 python3 tools/make_audio.py --subject 2 --engine azure --voice ko-KR-JiMinNeural
 ```
 
-**목소리가 하나뿐이어도 느낌을 바꿀 수 있습니다**
+**목소리 선택지를 넓히는 두 가지 방법**
 
-높낮이와 빠르기를 `이름@높낮이@빠르기` 로 지정합니다. 과목마다 다르게 주면 귀로 구분됩니다.
+무료 edge-tts 의 한국어 전용 음성은 몇 개 없습니다. 그래서 두 갈래로 늘립니다.
+
+① **높낮이·빠르기 바꾸기** — `이름@높낮이@빠르기` 로 지정합니다.
+
+| 지정 | 느낌 |
+|---|---|
+| `ko-KR-SunHiNeural` | 기본 |
+| `ko-KR-SunHiNeural@-15Hz` | 낮고 차분하게 (자기 전) |
+| `ko-KR-SunHiNeural@+15Hz` | 밝게 |
+| `ko-KR-SunHiNeural@+22Hz@+6%` | **밝고 또렷하게, 살짝 빠르게** |
+| `ko-KR-SunHiNeural@-8Hz@-8%` | 낮고 느리게 |
+
+② **다국어(Multilingual) 음성 쓰기** — 한국어도 읽습니다. 완전히 다른 목소리를 얻는 방법입니다.
 
 ```bash
-python3 tools/make_audio.py --subject 2 --voice ko-KR-SunHiNeural@-15Hz
-python3 tools/make_audio.py --subject 3 --voice ko-KR-SunHiNeural@+15Hz
-python3 tools/make_audio.py --subject 4 --voice ko-KR-SunHiNeural@-8Hz@-8%
+python3 tools/make_audio.py --sample --multi
 ```
 
-`--sample` 은 쓸 수 있는 목소리가 적으면 이 변형들을 대신 만들어 비교하게 해 줍니다.
+서버 목록에서 이름에 `Multilingual` 이 든 여성 음성을 찾아 맛보기를 만듭니다.
+`en-US-AvaMultilingualNeural`(밝고 또렷), `en-US-EmmaMultilingualNeural`(부드러움),
+`fr-FR-VivienneMultilingualNeural`(또렷하고 경쾌) 같은 것들이 나옵니다.
+
+> 다국어 음성은 한국어 억양이 살짝 다를 수 있습니다. 반드시 맛보기로 들어 보고 정하세요.
+> 잘 맞으면 한국어 전용 음성보다 또렷하고 생기 있게 들리는 경우가 많습니다.
+
+과목마다 다르게 주면 지금 무엇을 듣고 있는지 귀로 구분됩니다.
 
 **끊어 읽기**
 
