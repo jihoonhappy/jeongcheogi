@@ -1,4 +1,4 @@
-audio/
+audio/샘플_*.mp3
 !audio-manifest.json
 __pycache__/
 *.pyc
