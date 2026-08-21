@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16233A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="정처기 동기화">
+<title>정보처리기사 필기 · 기기 간 학습기록 동기화</title>
+<style>
+:root{
+  --paper:#EDF0F4; --grid:#DDE3EA; --card:#FFFFFF;
+  --ink:#16233A; --ink2:#4A5B75; --ink3:#8494AB;
+  --line:#D5DDE6;
+  --blue:#2F5DE0; --blue-soft:#E7EDFD;
+  --teal:#0E8074; --teal-soft:#E0F2EF;
+  --mag:#C2185B;  --mag-soft:#FBE7EF;
+  --amber:#B26A00; --amber-soft:#FDF0DC;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Malgun Gothic",sans-serif;
+  color:var(--ink); background:var(--paper);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:28px 28px;
+  line-height:1.6; -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:880px;margin:0 auto;padding:20px 16px 80px}
+button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.hide{display:none!important}
+
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.brand{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink3);font-family:var(--mono)}
+h1{margin:2px 0 0;font-size:24px;letter-spacing:-.02em;font-weight:800}
+h1 em{font-style:normal;color:var(--blue)}
+.toplink{font-family:var(--mono);font-size:12px;color:var(--ink2);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;white-space:nowrap;text-decoration:none}
+.toplink:hover{border-color:var(--blue);color:var(--blue)}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.card h2{margin:0 0 12px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3);font-family:var(--mono);font-weight:700}
+.note{font-size:13px;color:var(--ink2);margin-top:10px;line-height:1.6}
+.note b{color:var(--ink)}
+.warn{background:var(--amber-soft);border-left:3px solid var(--amber);border-radius:8px;padding:11px 13px;font-size:13px;margin-top:10px}
+.ok{background:var(--teal-soft);border-left:3px solid var(--teal);border-radius:8px;padding:11px 13px;font-size:13.5px;margin-top:10px}
+.bad{background:var(--mag-soft);border-left:3px solid var(--mag);border-radius:8px;padding:11px 13px;font-size:13.5px;margin-top:10px}
+
+.row{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.btn{border-radius:9px;padding:11px 16px;font-size:14.5px;font-weight:600;border:1px solid var(--line);background:var(--card);transition:.12s}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn-primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn-primary:hover{background:#2450C8;color:#fff}
+.btn-mag{color:var(--mag);border-color:#F0C9D8}
+.btn-sm{padding:8px 12px;font-size:13px}
+.btn:disabled{opacity:.4;cursor:default}
+
+.stats4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.s4{text-align:center;border:1px solid var(--line);border-radius:10px;padding:12px 6px;background:#FCFDFE}
+.s4 b{display:block;font-family:var(--mono);font-size:21px;font-weight:700;letter-spacing:-.02em}
+.s4 small{display:block;font-size:11px;color:var(--ink3);margin-top:3px}
+
+.tabs{display:flex;gap:8px;margin-bottom:14px}
+.tab{flex:1;text-align:center;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:12px 8px;font-weight:700;font-size:14.5px}
+.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+label.ck{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+label.ck input{width:18px;height:18px}
+
+.qrbox{text-align:center;padding:6px 0}
+#qrcv{width:100%;max-width:560px;height:auto;image-rendering:pixelated;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px}
+.qrmeta{font-family:var(--mono);font-size:15px;font-weight:700;margin-top:10px}
+.qrsub{font-size:12.5px;color:var(--ink2)}
+
+video{width:100%;max-width:420px;border-radius:10px;background:#000;display:block;margin:0 auto}
+.prog{font-family:var(--mono);font-size:15px;font-weight:700;text-align:center;margin-top:10px}
+.dots{display:flex;gap:6px;justify-content:center;margin-top:8px;flex-wrap:wrap}
+.dt{width:26px;height:8px;border-radius:4px;background:var(--line)}
+.dt.on{background:var(--teal)}
+
+textarea{width:100%;min-height:96px;font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:9px;padding:10px;resize:vertical;background:#FCFDFE;color:var(--ink)}
+select{font-family:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card);color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:8px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:700}
+td.num{text-align:right;font-family:var(--mono)}
+ol{margin:8px 0 0;padding-left:20px;font-size:13.5px;color:var(--ink2)}
+ol li{margin:4px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div>
+      <div class="brand">Device Sync</div>
+      <h1>기기 간 <em>학습기록 동기화</em></h1>
+    </div>
+    <div class="row">
+      <a class="toplink" href="index.html">개념 학습</a>
+      <a class="toplink" href="gichul.html">기출 트레이너</a>
+    </div>
+  </div>
+
+  <div id="inbox"></div>
+
+  <div class="tabs">
+    <button class="tab on" id="tab-send">📤 보내기</button>
+    <button class="tab" id="tab-recv">📥 받기</button>
+    <button class="tab" id="tab-file">💾 코드 · 파일</button>
+  </div>
+
+  <!-- ═══ 보내기 ═══ -->
+  <section id="pane-send">
+    <div class="card">
+      <h2>이 기기에 쌓인 기록</h2>
+      <div class="stats4" id="summary"></div>
+      <div class="note" id="zipnote"></div>
+    </div>
+
+    <div class="card">
+      <h2>QR 만들기</h2>
+      <div class="row" style="margin-bottom:10px">
+        <label class="ck"><input type="checkbox" id="opt-days" checked> 일별 통계·학습 잔디도 함께 보내기</label>
+      </div>
+      <div class="row" style="margin-bottom:12px">
+        <span style="font-size:13.5px;color:var(--ink2)">QR 한 장 크기</span>
+        <select id="opt-chunk">
+          <option value="400">작게 — 장수는 늘고 인식은 쉬움</option>
+          <option value="600" selected>보통 — 권장</option>
+          <option value="900">크게 — 장수는 줄고 인식은 까다로움</option>
+        </select>
+      </div>
+      <div class="row">
+        <button class="btn btn-primary" id="go-make">QR 만들기</button>
+      </div>
+
+      <div id="qrarea" class="hide" style="margin-top:14px">
+        <div class="qrbox">
+          <canvas id="qrcv"></canvas>
+          <div class="qrmeta" id="qrmeta"></div>
+          <div class="qrsub" id="qrsub"></div>
+          <div class="dots" id="qrdots"></div>
+        </div>
+        <div class="row" style="justify-content:center;margin-top:10px">
+          <button class="btn btn-sm" id="qr-prev">◀ 이전</button>
+          <button class="btn btn-sm" id="qr-play">⏸ 자동넘김 끄기</button>
+          <button class="btn btn-sm" id="qr-next">다음 ▶</button>
+        </div>
+        <div class="warn">
+          받는 기기에서 <b>📥 받기 → 카메라로 찍기</b>를 켜고 이 화면을 비추세요.
+          QR 이 여러 장이면 자동으로 넘어가므로 <b>가만히 들고 계시면</b> 다 읽힙니다.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 받기 ═══ -->
+  <section id="pane-recv" class="hide">
+    <div class="card">
+      <h2>카메라로 받기</h2>
+      <div class="row">
+        <button class="btn btn-primary" id="cam-start">카메라로 찍기</button>
+        <button class="btn hide" id="cam-stop">중지</button>
+      </div>
+      <div id="camarea" class="hide" style="margin-top:12px">
+        <video id="cam" playsinline muted></video>
+        <div class="prog" id="camprog">QR 을 찾는 중…</div>
+        <div class="dots" id="camdots"></div>
+      </div>
+      <div id="camerr"></div>
+      <div class="note">
+        카메라가 열리지 않으면 아이폰 <b>기본 카메라 앱</b>으로 QR 을 찍어도 됩니다.
+        링크가 열리면 이 화면이 조각을 자동으로 모읍니다(여러 장이면 한 장씩 찍으세요).
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>받는 중인 조각</h2>
+      <div id="pending"></div>
+    </div>
+  </section>
+
+  <!-- ═══ 코드 · 파일 ═══ -->
+  <section id="pane-file" class="hide">
+    <div class="card">
+      <h2>코드로 옮기기</h2>
+      <div class="row" style="margin-bottom:9px">
+        <button class="btn" id="code-make">현재 기록을 코드로 만들기</button>
+        <button class="btn btn-sm" id="code-copy">복사</button>
+      </div>
+      <textarea id="code" placeholder="다른 기기에서 만든 코드를 여기에 붙여넣고 [불러와 합치기]"></textarea>
+      <div class="row" style="margin-top:9px">
+        <button class="btn btn-primary" id="code-load">불러와 합치기</button>
+      </div>
+      <div id="codemsg"></div>
+    </div>
+
+    <div class="card">
+      <h2>파일로 옮기기</h2>
+      <div class="row">
+        <button class="btn" id="file-save">파일로 저장</button>
+        <label class="btn" for="file-open" style="display:inline-block">파일 열어 합치기</label>
+        <input type="file" id="file-open" accept=".json,.txt,application/json,text/plain" class="hide">
+      </div>
+      <div class="note">아이클라우드 드라이브에 저장해 두면 아이폰 <b>파일</b> 앱에서 바로 열 수 있습니다.</div>
+      <div id="filemsg"></div>
+    </div>
+
+    <div class="card">
+      <h2>동기화되는 것 · 안 되는 것</h2>
+      <table>
+        <tr><th>항목</th><th>동기화</th></tr>
+        <tr><td>개념 문항별 복습 단계·정답/오답·찍음·모름</td><td>○</td></tr>
+        <tr><td>기출 문항별 시도·오답·찍음·모름·다시 볼 문항</td><td>○</td></tr>
+        <tr><td>일별 통계(학습 잔디)</td><td>○ (선택)</td></tr>
+        <tr><td>세션 이력(최근 학습 기록 표)</td><td>× 기기별로 남습니다</td></tr>
+        <tr><td>음성·오디오 경로 등 기기 설정</td><td>× 기기마다 달라 보내지 않습니다</td></tr>
+      </table>
+      <div class="note">
+        합칠 때 규칙 — 횟수는 <b>양쪽 중 큰 값</b>, 복습 단계와 다음 복습일은 <b>마지막에 푼 쪽</b>을 따릅니다.
+        같은 QR 을 두 번 읽어도 숫자가 부풀지 않습니다.
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script src="sync-codec.js"></script>
+<script src="sync.js"></script>
+</body>
+</html>

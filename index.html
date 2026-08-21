@@ -1151,6 +1151,7 @@ function header(sub){
       <h1>정보처리기사 <em>필기 트레이너</em></h1></div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <a class="streak" style="text-decoration:none" href="gichul.html">기출 트레이너 →</a>
+      <a class="streak" style="text-decoration:none" href="sync.html">📲 동기화</a>
       <div class="streak">🔥 ${streakDays()}일 연속 · 누적 ${totalSolved()}문항</div>
     </div>
   </div>${sub||""}`;
@@ -1436,7 +1437,15 @@ function viewStats(){
   </div>
 
   <div class="card"><h2>기기 간 이동 · 백업</h2>
-    <div class="note" style="margin-top:0">학습 기록은 이 브라우저에만 저장됩니다. 다른 기기에서 이어서 하려면 아래 코드를 복사해 옮긴 뒤 붙여넣고 [불러오기]를 누르세요.</div>
+    <div class="note" style="margin-top:0">
+      학습 기록은 이 브라우저에만 저장됩니다.
+      <b>아이패드에서 풀던 것을 폰에서 이어서 하려면</b> 아래 [기기 간 동기화]로 QR 을 만들어 찍으세요 —
+      개념·기출 기록이 한 번에 넘어가고, 받는 기기의 기록은 지워지지 않고 <b>합쳐집니다</b>.
+    </div>
+    <div class="row" style="margin:10px 0 4px">
+      <button class="btn btn-primary" onclick="location.href='sync.html'">📲 기기 간 동기화</button>
+    </div>
+    <div class="note">아래는 이 페이지(개념 학습)만 통째로 <b>덮어쓰는</b> 옛 백업 방식입니다.</div>
     <textarea id="bk" placeholder="여기에 백업 코드를 붙여넣으세요"></textarea>
     <div class="row" style="margin-top:9px">
       <button class="btn btn-ghost" onclick="doExport()">현재 기록 내보내기</button>

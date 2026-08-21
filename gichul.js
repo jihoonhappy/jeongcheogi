@@ -94,8 +94,11 @@ V.home=function(){
 
   h.push('<div class="card"><h2>기록</h2><div class="row spread">'+
     '<button class="btn btn-ghost btn-sm" id="go-stats">통계 보기</button>'+
-    '<div class="row"><button class="btn btn-ghost btn-sm" id="do-export">내보내기</button>'+
-    '<button class="btn btn-mag btn-sm" id="do-reset">기록 초기화</button></div></div></div>');
+    '<div class="row"><button class="btn btn-ghost btn-sm" id="go-sync">📲 기기 간 동기화</button>'+
+    '<button class="btn btn-ghost btn-sm" id="do-export">내보내기</button>'+
+    '<button class="btn btn-mag btn-sm" id="do-reset">기록 초기화</button></div></div>'+
+    '<div class="note" style="font-size:12.5px;color:var(--ink2);margin-top:9px">'+
+    '아이패드에서 풀던 기록을 폰에서 이어 하려면 [기기 간 동기화]에서 QR 을 만들어 찍으세요.</div></div>');
   app(h.join(''));
   foot('출처 · 2022년 1회 ~ 2026년 1회 필기 기출 '+META.total+'문항 (중복 제거 '+META.unique+'문항)<br>'+
        '자료 신뢰도 · 시나공(길벗) 배포본 기준. Q-Net 공식 공개본 여부는 확인되지 않음');
@@ -120,6 +123,7 @@ V.home=function(){
   var sel=document.getElementById('o-count');
   if(sel) sel.onchange=function(){ o.count=+sel.value; save(); };
   on('go-stats',V.stats); on('do-reset',doReset); on('do-export',doExport);
+  on('go-sync',function(){ location.href='sync.html'; });
 };
 function mode(id,dot,t,d,dis){
   return '<button class="mode" id="'+id+'"'+(dis?' disabled':'')+'>'+

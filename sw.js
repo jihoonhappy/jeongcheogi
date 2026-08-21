@@ -1,6 +1,6 @@
 /* 오프라인 캐시 서비스 워커
    문제은행을 수정한 뒤에는 아래 CACHE 버전을 반드시 올리세요. */
-const CACHE = "jbg-v21";
+const CACHE = "jbg-v22";
 const ASSETS = [
   "./", "./index.html", "./manifest.webmanifest",
   "./data/bank.js", "./data/subject1.js", "./data/subject2.js",
@@ -13,7 +13,10 @@ const ASSETS = [
   "./data/exam2023_1.js", "./data/exam2023_2.js", "./data/exam2023_3.js",
   "./data/exam2024_1.js", "./data/exam2024_2.js", "./data/exam2024_3.js",
   "./data/exam2025_1.js", "./data/exam2025_2.js", "./data/exam2025_3.js",
-  "./data/exam2026_1.js"
+  "./data/exam2026_1.js",
+  /* 기기 간 동기화 */
+  "./sync.html", "./sync.js", "./sync-codec.js",
+  "./lib/qrgen.min.js", "./lib/jsqr.min.js"
 ];
 
 self.addEventListener("install", e => {
