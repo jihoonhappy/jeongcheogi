@@ -26,7 +26,7 @@
   - edge-tts 쓸 때  (pip3 install edge-tts)
 """
 
-import argparse, asyncio, json, os, re, shutil, subprocess, sys, unicodedata
+import argparse, asyncio, glob, json, os, re, shutil, subprocess, sys, unicodedata
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
@@ -627,12 +627,29 @@ async def build_subject(s, args):
                     await asyncio.sleep(1.5 * (attempt + 1))
         return None
 
+    redo = getattr(args, "_redo_ids", None)
     groups = [bank[i:i + args.group] for i in range(0, len(bank), args.group)]
     made = []
     for gi, grp in enumerate(groups, 1):
         lo, hi = (gi - 1) * args.group + 1, (gi - 1) * args.group + len(grp)
         out = os.path.join(out_dir, group_name(s, gi, lo, hi))
-        if os.path.exists(out) and not args.force:
+
+        # --redo: 지정한 문항이 들어 있는 묶음만 다시 만듭니다.
+        hits = [q["id"] for q in grp if redo and q["id"] in redo]
+        if redo is not None:
+            if not hits:
+                if os.path.exists(out):
+                    made.append(out)
+                continue
+            # 바뀐 문항의 조각 캐시를 지웁니다. 남겨 두면 옛 음성을 그대로 재사용합니다.
+            for qid in hits:
+                for f in glob.glob(os.path.join(tmp_dir, "q%05d_*.mp3" % qid)):
+                    os.remove(f)
+            if os.path.exists(out):
+                os.remove(out)
+            print("    %s — 바뀐 문항 %s 때문에 다시 만듭니다"
+                  % (os.path.basename(out), ", ".join(str(x) for x in hits)))
+        elif os.path.exists(out) and not args.force:
             print("    %s — 이미 있음, 건너뜀" % os.path.basename(out))
             made.append(out); continue
 
@@ -828,6 +845,10 @@ def main():
                     help="만든 뒤 과목별 zip 으로 묶습니다 (폰·클라우드로 옮길 때)")
     ap.add_argument("--copy-to", default=None,
                     help="만든 뒤 이 폴더로 복사합니다 (예: ~/Library/Mobile Documents/com~apple~CloudDocs/정처기음성)")
+    ap.add_argument("--redo", default=None,
+                    help="바뀐 문항 id 가 들어 있는 묶음만 다시 만들기. "
+                         "쉼표로 구분한 id 목록 또는 id 목록이 담긴 파일 경로 "
+                         "(예: --redo 1006,1007,1019  /  --redo changed_ids.json)")
     ap.add_argument("--hq", action="store_true",
                     help="48kHz 128kbps 로 만들기. Azure(--engine azure) 나 say 에서만 효과가 있습니다. "
                          "edge-tts 는 24kHz 48kbps 고정입니다")
@@ -854,6 +875,18 @@ def main():
 
     if args.engine == "azure" and not args.azure_key:
         sys.exit("Azure 를 쓰려면 키가 필요합니다.  --azure-key 또는 환경변수 AZURE_SPEECH_KEY")
+
+    args._redo_ids = None
+    if args.redo:
+        raw = args.redo
+        if os.path.exists(raw):
+            raw = open(raw, encoding="utf-8").read()
+        ids = {int(x) for x in re.findall(r"\d{4,5}", raw)}
+        if not ids:
+            sys.exit("--redo 에서 문항 id 를 찾지 못했습니다.")
+        args._redo_ids = ids
+        args.force = True
+        print("다시 만들 문항 %d개: %s\n" % (len(ids), ", ".join(str(i) for i in sorted(ids))))
 
     set_hq(args.hq)
     if args.hq and args.engine == "edge":
